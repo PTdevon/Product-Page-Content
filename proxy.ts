@@ -1,0 +1,61 @@
+import { NextRequest, NextResponse } from "next/server";
+import { rateLimit } from "@/lib/rate-limit";
+
+export function proxy(req: NextRequest) {
+  if (process.env.APP_ENABLED !== "true") {
+    return new NextResponse("Service Unavailable", { status: 503 });
+  }
+
+  const { pathname } = req.nextUrl;
+
+  // Rate limit API requests
+  if (pathname.startsWith("/api/")) {
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+    const { limited, retryAfter } = rateLimit(`api:${ip}`, 100, 60 * 1000);
+    if (limited) {
+      return NextResponse.json(
+        { error: "Too Many Requests" },
+        { status: 429, headers: { "Retry-After": String(retryAfter) } }
+      );
+    }
+  }
+
+  // CSRF protection for mutating API requests
+  if (pathname.startsWith("/api/") && ["POST", "PUT", "DELETE", "PATCH"].includes(req.method)) {
+    const origin = req.headers.get("origin");
+    const referer = req.headers.get("referer");
+    const host = req.headers.get("host");
+
+    if (host) {
+      const allowed = host.replace(/:\d+$/, "");
+      const originHost = origin
+        ? new URL(origin).hostname
+        : referer
+          ? new URL(referer).hostname
+          : null;
+
+      const isTrusted = originHost === allowed || originHost === "admin.shopify.com";
+      if (!originHost || !isTrusted) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+    }
+  }
+
+  // Production: page requests without Shopify context are rejected
+  if (process.env.NODE_ENV === "production" && !pathname.startsWith("/api/")) {
+    const shop = req.nextUrl.searchParams.get("shop");
+    const host = req.nextUrl.searchParams.get("host");
+    if (!shop && !host) {
+      return new NextResponse("<html><body><p>Open this app from Shopify Admin.</p></body></html>", {
+        status: 401,
+        headers: { "Content-Type": "text/html" },
+      });
+    }
+  }
+
+  return NextResponse.next();
+}
+
+export const config = {
+  matcher: ["/((?!api/auth|_next|favicon\\.ico|icons).*)" ],
+};

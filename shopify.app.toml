@@ -1,0 +1,17 @@
+client_id = "fc09ae28b110a15d441e904cf94bc925"
+name = "PT PDP Content"
+application_url = "https://pt-pdp-content.vercel.app"
+embedded = true
+
+[webhooks]
+api_version = "2026-01"
+
+[access_scopes]
+scopes = "read_products,write_products,read_files,write_files"
+use_legacy_install_flow = false
+
+[auth]
+redirect_urls = [
+  "http://localhost:4001/api/auth/callback",
+  "https://pt-pdp-content.vercel.app/api/auth/callback"
+]
