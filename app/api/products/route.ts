@@ -34,6 +34,8 @@ function contentStatus(node: { productSummary: { value: string } | null; wctBull
   return "missing";
 }
 
+const PAGE_SIZE = 10;
+
 export async function GET(req: NextRequest) {
   const authError = await requireAuth(req);
   if (authError) return authError;
@@ -46,45 +48,64 @@ export async function GET(req: NextRequest) {
   const query = search ? `title:*${search}*` : "";
 
   type MF = { value: string } | null;
-  const data = await shopifyGraphQL<{
-    products: {
-      edges: {
-        node: {
-          id: string;
-          title: string;
-          handle: string;
-          featuredImage: { url: string } | null;
-          productTypePt: MF;
-          productStylePt: MF;
-          productSummary: MF;
-          wctBullet1: MF;
-          pfBullet1: MF;
-        };
-        cursor: string;
-      }[];
-      pageInfo: { hasNextPage: boolean };
+  type RawEdge = {
+    node: {
+      id: string; title: string; handle: string;
+      featuredImage: { url: string } | null;
+      productTypePt: MF; productStylePt: MF;
+      productSummary: MF; wctBullet1: MF; pfBullet1: MF;
     };
-  }>(LIST_PRODUCTS, { first: 50, after: cursor || null, query });
+    cursor: string;
+  };
 
-  let products: ProductSummary[] = data.products.edges.map(({ node }) => {
-    const cs = contentStatus(node);
-    return {
-      id: node.id,
-      title: node.title,
-      handle: node.handle,
-      featuredImage: node.featuredImage?.url ?? null,
-      productTypePt: node.productTypePt?.value ?? "",
-      productStylePt: node.productStylePt?.value ?? "",
-      contentStatus: cs,
-    };
-  });
+  // When filtering by status, Shopify can't filter by metafield value so we loop
+  // through pages until we accumulate PAGE_SIZE matching products.
+  // Each matched item tracks its cursor so the next request resumes from exactly
+  // after the last returned product.
+  const matched: Array<{ product: ProductSummary; cursor: string }> = [];
+  let scanCursor: string | null = cursor || null;
+  let hasMore = true;
+  // When filtering, fetch 250 (Shopify's max) per call so we usually only need one round-trip.
+  // Cap at 3 iterations to avoid serverless timeout (covers up to 750 products).
+  const SHOPIFY_BATCH = status ? 250 : PAGE_SIZE;
+  const MAX_ITERATIONS = status ? 3 : 1;
+  let iterations = 0;
 
-  if (status === "missing") products = products.filter((p) => p.contentStatus === "missing");
-  if (status === "partial") products = products.filter((p) => p.contentStatus === "partial");
-  if (status === "complete") products = products.filter((p) => p.contentStatus === "complete");
+  while (matched.length < PAGE_SIZE && hasMore && iterations < MAX_ITERATIONS) {
+    iterations++;
+    const data = await shopifyGraphQL<{
+      products: { edges: RawEdge[]; pageInfo: { hasNextPage: boolean } };
+    }>(LIST_PRODUCTS, { first: SHOPIFY_BATCH, after: scanCursor, query });
 
-  const lastEdge = data.products.edges[data.products.edges.length - 1];
-  const nextCursor = data.products.pageInfo.hasNextPage ? lastEdge?.cursor ?? null : null;
+    for (const edge of data.products.edges) {
+      if (matched.length >= PAGE_SIZE) break;
+      const cs = contentStatus(edge.node);
+      if (!status || cs === status) {
+        matched.push({
+          product: {
+            id: edge.node.id,
+            title: edge.node.title,
+            handle: edge.node.handle,
+            featuredImage: edge.node.featuredImage?.url ?? null,
+            productTypePt: edge.node.productTypePt?.value ?? "",
+            productStylePt: edge.node.productStylePt?.value ?? "",
+            contentStatus: cs,
+          },
+          cursor: edge.cursor,
+        });
+      }
+    }
+
+    hasMore = data.products.pageInfo.hasNextPage;
+    if (hasMore && data.products.edges.length > 0) {
+      scanCursor = data.products.edges[data.products.edges.length - 1].cursor;
+    }
+  }
+
+  const products = matched.map((e) => e.product);
+  // Use the last returned product's cursor as the next page token so that
+  // subsequent requests resume from exactly after where we stopped.
+  const nextCursor = matched.length >= PAGE_SIZE ? matched[matched.length - 1].cursor : null;
 
   return NextResponse.json({ products, nextCursor });
 }

@@ -38,22 +38,27 @@ export async function POST(
     }
   }
 
-  await setProductMetafields(productGid, {
-    productSummary: body.productSummary,
-    productTypePt: body.productTypePt,
-    productStylePt: styles.join(","),
-    whyChooseThis: body.whyChooseThis,
-    perfectFor: {
-      bullet1: body.perfectFor.bullet1,
-      bullet2: body.perfectFor.bullet2,
-      bullet3: body.perfectFor.bullet3,
-      bullet4: body.perfectFor.bullet4,
-      icon1: resolveIconForMetafield(body.perfectFor.icon1),
-      icon2: resolveIconForMetafield(body.perfectFor.icon2),
-      icon3: resolveIconForMetafield(body.perfectFor.icon3),
-      icon4: resolveIconForMetafield(body.perfectFor.icon4),
-    },
-  });
+  try {
+    await setProductMetafields(productGid, {
+      productSummary: body.productSummary,
+      productTypePt: body.productTypePt,
+      productStylePt: styles.join(","),
+      whyChooseThis: body.whyChooseThis,
+      perfectFor: {
+        bullet1: body.perfectFor.bullet1,
+        bullet2: body.perfectFor.bullet2,
+        bullet3: body.perfectFor.bullet3,
+        bullet4: body.perfectFor.bullet4,
+        icon1: resolveIconForMetafield(body.perfectFor.icon1),
+        icon2: resolveIconForMetafield(body.perfectFor.icon2),
+        icon3: resolveIconForMetafield(body.perfectFor.icon3),
+        icon4: resolveIconForMetafield(body.perfectFor.icon4),
+      },
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Save failed";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 
   return NextResponse.json({ ok: true });
 }

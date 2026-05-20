@@ -22,6 +22,10 @@ export default function ProductsPage() {
     if (!reset && nextCursor) params.set("cursor", nextCursor);
 
     const res = await fetch(`/api/products?${params}`);
+    if (!res.ok) {
+      setLoading(false);
+      return;
+    }
     const data = await res.json();
 
     setProducts((prev) => reset ? data.products : [...prev, ...data.products]);
@@ -38,7 +42,6 @@ export default function ProductsPage() {
 
   function handleSaved() {
     fetchProducts(true);
-    setSelectedId(null);
   }
 
   return (

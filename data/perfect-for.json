@@ -74,7 +74,7 @@
     "filterByInterest": false,
     "timeSensitive": null,
     "applicabilityCount": 4,
-    "icon": "gift"
+    "icon": "sparkle"
   },
   {
     "id": "pf-008",
@@ -85,7 +85,7 @@
     "filterByInterest": false,
     "timeSensitive": null,
     "applicabilityCount": 1,
-    "icon": "gift"
+    "icon": "sun"
   },
   {
     "id": "pf-009",
@@ -415,7 +415,7 @@
     "filterByInterest": false,
     "timeSensitive": null,
     "applicabilityCount": 1,
-    "icon": "plane"
+    "icon": "sparkle"
   },
   {
     "id": "pf-039",
@@ -470,7 +470,7 @@
     "filterByInterest": false,
     "timeSensitive": null,
     "applicabilityCount": 3,
-    "icon": "star"
+    "icon": "flower"
   },
   {
     "id": "pf-044",
@@ -514,7 +514,7 @@
     "filterByInterest": false,
     "timeSensitive": null,
     "applicabilityCount": 1,
-    "icon": "graduate"
+    "icon": "sparkle"
   },
   {
     "id": "pf-048",
@@ -635,7 +635,7 @@
     "filterByInterest": false,
     "timeSensitive": null,
     "applicabilityCount": 1,
-    "icon": "gift"
+    "icon": "sparkle"
   },
   {
     "id": "pf-062",
@@ -701,7 +701,7 @@
     "filterByInterest": false,
     "timeSensitive": null,
     "applicabilityCount": 1,
-    "icon": "gift"
+    "icon": "sun"
   },
   {
     "id": "pf-068",
@@ -712,7 +712,7 @@
     "filterByInterest": false,
     "timeSensitive": null,
     "applicabilityCount": 1,
-    "icon": "gift"
+    "icon": "star"
   },
   {
     "id": "pf-069",
@@ -844,7 +844,7 @@
     "filterByInterest": true,
     "timeSensitive": null,
     "applicabilityCount": 6,
-    "icon": "fork"
+    "icon": "dining"
   },
   {
     "id": "pf-081",
@@ -866,7 +866,7 @@
     "filterByInterest": true,
     "timeSensitive": null,
     "applicabilityCount": 6,
-    "icon": "trophy"
+    "icon": "leaf"
   },
   {
     "id": "pf-083",
@@ -899,7 +899,7 @@
     "filterByInterest": false,
     "timeSensitive": null,
     "applicabilityCount": 1,
-    "icon": "dining"
+    "icon": "star"
   },
   {
     "id": "pf-086",
@@ -932,7 +932,7 @@
     "filterByInterest": false,
     "timeSensitive": null,
     "applicabilityCount": 1,
-    "icon": "gift"
+    "icon": "rings"
   },
   {
     "id": "pf-089",
@@ -1020,7 +1020,7 @@
     "filterByInterest": false,
     "timeSensitive": null,
     "applicabilityCount": 1,
-    "icon": "gift"
+    "icon": "sun"
   },
   {
     "id": "pf-097",
@@ -1053,7 +1053,7 @@
     "filterByInterest": false,
     "timeSensitive": "fathers-day",
     "applicabilityCount": 3,
-    "icon": "star"
+    "icon": "wrench"
   },
   {
     "id": "pf-100",
@@ -1097,7 +1097,7 @@
     "filterByInterest": false,
     "timeSensitive": null,
     "applicabilityCount": 3,
-    "icon": "star"
+    "icon": "wrench"
   },
   {
     "id": "pf-104",
@@ -1130,7 +1130,7 @@
     "filterByInterest": false,
     "timeSensitive": null,
     "applicabilityCount": 3,
-    "icon": "gift"
+    "icon": "sparkle"
   },
   {
     "id": "pf-107",
@@ -1141,7 +1141,7 @@
     "filterByInterest": false,
     "timeSensitive": null,
     "applicabilityCount": 1,
-    "icon": "ribbon"
+    "icon": "watch"
   },
   {
     "id": "pf-108",
@@ -1207,7 +1207,7 @@
     "filterByInterest": false,
     "timeSensitive": null,
     "applicabilityCount": 1,
-    "icon": "gift"
+    "icon": "sparkle"
   },
   {
     "id": "pf-114",
@@ -1295,7 +1295,7 @@
     "filterByInterest": false,
     "timeSensitive": null,
     "applicabilityCount": 2,
-    "icon": "graduate"
+    "icon": "sparkle"
   },
   {
     "id": "pf-122",
@@ -1350,7 +1350,7 @@
     "filterByInterest": false,
     "timeSensitive": null,
     "applicabilityCount": 1,
-    "icon": "gift"
+    "icon": "rings"
   },
   {
     "id": "pf-127",
@@ -1361,7 +1361,7 @@
     "filterByInterest": false,
     "timeSensitive": null,
     "applicabilityCount": 1,
-    "icon": "ribbon"
+    "icon": "clover"
   },
   {
     "id": "pf-128",
@@ -1372,7 +1372,7 @@
     "filterByInterest": false,
     "timeSensitive": null,
     "applicabilityCount": 1,
-    "icon": "ribbon"
+    "icon": "gift"
   },
   {
     "id": "pf-129",
@@ -1416,7 +1416,7 @@
     "filterByInterest": false,
     "timeSensitive": null,
     "applicabilityCount": 1,
-    "icon": "ribbon"
+    "icon": "clover"
   },
   {
     "id": "pf-133",
@@ -1570,7 +1570,7 @@
     "filterByInterest": false,
     "timeSensitive": null,
     "applicabilityCount": 4,
-    "icon": "gift"
+    "icon": "sparkle"
   },
   {
     "id": "pf-147",
@@ -1614,7 +1614,7 @@
     "filterByInterest": false,
     "timeSensitive": null,
     "applicabilityCount": 1,
-    "icon": "ribbon"
+    "icon": "gift"
   },
   {
     "id": "pf-151",
@@ -1647,7 +1647,7 @@
     "filterByInterest": false,
     "timeSensitive": null,
     "applicabilityCount": 1,
-    "icon": "gift"
+    "icon": "sparkle"
   },
   {
     "id": "pf-154",

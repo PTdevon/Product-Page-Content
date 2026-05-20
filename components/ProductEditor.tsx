@@ -68,6 +68,9 @@ interface ProductData {
   preview: {
     whyChooseThis: WCTBullets;
     perfectFor: { bullets: string[]; icons: string[] };
+    wctHasAlternatives: boolean;
+    wctSlotCounts: number[];
+    pfSwapCount: number;
   } | null;
 }
 
@@ -86,7 +89,7 @@ function formatBullet(text: string, subtext: string): string {
 function SectionHeading({ children, action }: { children: React.ReactNode; action?: React.ReactNode }) {
   return (
     <div className="flex items-center gap-3 mb-3">
-      <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">{children}</span>
+      <span className="text-sm font-semibold uppercase tracking-wider text-gray-800">{children}</span>
       <div className="flex-1 border-t border-gray-200" />
       {action}
     </div>
@@ -114,6 +117,9 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
   const [swapModal, setSwapModal] = useState<{ type: "why" | "perfect"; slotIndex: number } | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [reassigningWct, setReassigningWct] = useState(false);
+  const [wctHasAlternatives, setWctHasAlternatives] = useState(true);
+  const [wctSlotCounts, setWctSlotCounts] = useState<number[]>([1, 1, 1, 1]);
+  const [pfSwapCount, setPfSwapCount] = useState<number>(1);
   const [typeStyleError, setTypeStyleError] = useState("");
 
   useEffect(() => {
@@ -131,6 +137,9 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
           ? d.metafields.whyChooseThis
           : d.preview?.whyChooseThis ?? { bullet1: "", bullet2: "", bullet3: "", bullet4: "" };
         setWctBullets(wct);
+        setWctHasAlternatives(d.preview?.wctHasAlternatives ?? true);
+        setWctSlotCounts(d.preview?.wctSlotCounts ?? [1, 1, 1, 1]);
+        setPfSwapCount(d.preview?.pfSwapCount ?? 1);
 
         const pf = d.metafields.perfectFor;
         if (pf.bullet1) {
@@ -140,13 +149,6 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
             { phrase: pf.bullet3, icon: pf.icon3 },
             { phrase: pf.bullet4, icon: pf.icon4 },
           ]);
-        } else if (d.preview?.perfectFor) {
-          setPfSlots(
-            d.preview.perfectFor.bullets.map((phrase, i) => ({
-              phrase,
-              icon: d.preview!.perfectFor.icons[i] ?? "",
-            }))
-          );
         }
       })
       .finally(() => setLoading(false));
@@ -168,6 +170,9 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
         icon: preview.perfectFor.icons[i] ?? "",
       }))
     );
+    if (preview.wctHasAlternatives !== undefined) setWctHasAlternatives(preview.wctHasAlternatives);
+    if (preview.wctSlotCounts) setWctSlotCounts(preview.wctSlotCounts);
+    if (preview.pfSwapCount !== undefined) setPfSwapCount(preview.pfSwapCount);
     setPreviewLoading(false);
   }
 
@@ -175,6 +180,7 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
     setProductType(t);
     setProductStyles([]);
     setTypeStyleError("");
+    setWctHasAlternatives(true);
   }
 
   function handleStyleToggle(s: string) {
@@ -196,6 +202,9 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
     });
     const preview = await res.json();
     if (preview.whyChooseThis) setWctBullets(preview.whyChooseThis);
+    if (preview.wctHasAlternatives !== undefined) setWctHasAlternatives(preview.wctHasAlternatives);
+    if (preview.wctSlotCounts) setWctSlotCounts(preview.wctSlotCounts);
+    if (preview.pfSwapCount !== undefined) setPfSwapCount(preview.pfSwapCount);
     setReassigningWct(false);
   }
 
@@ -303,7 +312,8 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
       setError(result.error ?? "Save failed");
     } else {
       setSuccessMsg("Saved successfully");
-      setTimeout(() => onSaved(), 800);
+      onSaved();
+      setTimeout(() => setSuccessMsg(""), 3000);
     }
   }
 
@@ -392,9 +402,9 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
             <button
               onClick={handleGenerateSummary}
               disabled={generatingOptions}
-              className="mt-2 px-4 py-2 bg-gray-800 text-white text-sm font-medium rounded-md hover:bg-gray-900 disabled:opacity-50 transition-colors"
+              className="mt-2 px-4 py-2 bg-white border border-gray-400 text-gray-800 text-sm font-medium rounded-md hover:bg-gray-50 hover:border-gray-600 disabled:opacity-50 transition-colors"
             >
-              {generatingOptions ? "Generating…" : "Generate options"}
+              {generatingOptions ? "Generating…" : productSummary ? "Regenerate Product Summary" : "Generate Product Summary"}
             </button>
 
             {generateError && (
@@ -425,15 +435,10 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
 
           {/* Why People Love This */}
           <section>
-            <SectionHeading action={
-              <button
-                onClick={handleReassignWct}
-                disabled={reassigningWct || !productType || productStyles.length === 0}
-                className="text-xs text-gray-500 hover:text-gray-800 border border-gray-200 hover:border-gray-300 px-2.5 py-1 rounded transition-colors disabled:opacity-40 shrink-0"
-              >
-                {reassigningWct ? "Reassigning…" : "Re-assign"}
-              </button>
-            }>Why People Love This</SectionHeading>
+            <SectionHeading>Why People Love This</SectionHeading>
+            {(!productType || productStyles.length === 0) && !wctBullets.bullet1 ? (
+              <p className="text-sm text-gray-400 italic">Please select a Product Type and Style above to populate</p>
+            ) : (
             <div className="space-y-2">
               {WCT_SLOTS.map((slot, i) => {
                 const val = wctBullets[slot.key];
@@ -445,12 +450,14 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
                         <span className="text-gray-400">{slot.icon}</span>
                         {slot.label}
                       </span>
-                      <button
-                        onClick={() => setSwapModal({ type: "why", slotIndex: i })}
-                        className="text-xs text-gray-500 hover:text-gray-800 border border-gray-200 hover:border-gray-300 px-2.5 py-1 rounded transition-colors"
-                      >
-                        Swap
-                      </button>
+                      {(wctSlotCounts[i] ?? 1) > 1 && (
+                        <button
+                          onClick={() => setSwapModal({ type: "why", slotIndex: i })}
+                          className="text-xs text-gray-500 hover:text-gray-800 border border-gray-200 hover:border-gray-300 px-2.5 py-1 rounded transition-colors"
+                        >
+                          Swap
+                        </button>
+                      )}
                     </div>
                     {wctEditing?.key === slot.key ? (
                       <div className="space-y-2">
@@ -503,11 +510,29 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
                 );
               })}
             </div>
+            )}
+            {productType && productStyles.length > 0 && (
+              <span
+                title={!wctHasAlternatives ? "No alternative options available for this type and style" : undefined}
+                className="mt-2 inline-block"
+              >
+                <button
+                  onClick={handleReassignWct}
+                  disabled={reassigningWct || !wctHasAlternatives}
+                  className="px-4 py-2 bg-white border border-gray-400 text-gray-800 text-sm font-medium rounded-md hover:bg-gray-50 hover:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {reassigningWct ? "Regenerating…" : "Regenerate Why People Love"}
+                </button>
+              </span>
+            )}
           </section>
 
           {/* Perfect For */}
           <section>
             <SectionHeading>Perfect For</SectionHeading>
+            {(!productType || productStyles.length === 0) && pfSlots.every(s => !s.phrase) ? (
+              <p className="text-sm text-gray-400 italic">Please select a Product Type and Style above to populate</p>
+            ) : (
             <div className="space-y-2">
               {pfSlots.map((slot, i) => (
                 <div key={i} className="bg-white border border-gray-200 rounded-md px-3 py-2.5 flex items-center gap-3">
@@ -536,17 +561,20 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
                   <span className="text-sm text-gray-700 flex-1">
                     {slot.phrase || <em className="text-gray-400 not-italic">Empty</em>}
                   </span>
-                  <button
-                    onClick={() => setSwapModal({ type: "perfect", slotIndex: i })}
-                    className="text-xs text-gray-500 hover:text-gray-800 border border-gray-200 hover:border-gray-300 px-2.5 py-1 rounded shrink-0 transition-colors"
-                  >
-                    Swap
-                  </button>
+                  {pfSwapCount > 1 && (
+                    <button
+                      onClick={() => setSwapModal({ type: "perfect", slotIndex: i })}
+                      className="text-xs text-gray-500 hover:text-gray-800 border border-gray-200 hover:border-gray-300 px-2.5 py-1 rounded shrink-0 transition-colors"
+                    >
+                      Swap
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
+            )}
             <div className="mt-3 pt-3 border-t border-gray-100">
-              <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Include seasonal items</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Perfect For Seasonal Occasions</p>
               <div className="flex flex-wrap gap-x-4 gap-y-2">
                 {([
                   { key: "mothersDay",    label: "Mother's Day" },
@@ -577,7 +605,7 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
         <button
           onClick={handleSave}
           disabled={saving}
-          className="px-6 py-2 bg-gray-800 text-white text-sm font-medium rounded-md hover:bg-gray-900 disabled:opacity-50 transition-colors"
+          className="px-6 py-2 bg-black text-white text-sm font-semibold rounded-md hover:bg-gray-900 disabled:opacity-50 transition-colors"
         >
           {saving ? "Saving…" : "Save changes"}
         </button>

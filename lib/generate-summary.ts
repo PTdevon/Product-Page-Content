@@ -8,19 +8,20 @@ The product summary is a short elevator pitch displayed above the price on the p
 
 Formula: [Aesthetic benefit] + [Functional benefit] + [Permission to buy]
 The copy MUST include a tension-resolving line: a phrase that resolves an internal conflict the buyer might have, such as:
-"Looks expensive, but it's under £30."
 "Practical, but it looks beautiful."
 "Simple, but completely thoughtful."
 "Small, but it says everything."
+"Understated, but impossible to forget."
 
 CRITICAL RULES (violations will cause the output to be rejected):
 1. NEVER use dashes of any kind. No hyphens, no en-dashes, no em-dashes. Not in any context.
 2. No exclamation marks.
 3. No generic phrases: "perfect gift", "loved by all", "something for everyone", "makes a great present".
-4. One or two short sentences maximum (aim for one).
-5. Warm and honest, not salesy.
-6. Written for a British audience.
-7. Reflects the product type and style provided.`;
+4. NEVER mention price, value, cost, or affordability in any form.
+5. One or two short sentences maximum (aim for one).
+6. Warm and honest, not salesy.
+7. Written for a British audience.
+8. Reflects the product type and style provided.`;
 
 function stripHtml(html: string): string {
   return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 1000);
@@ -69,6 +70,7 @@ Write exactly 3 distinct product summary options for this product. Number them 1
     const options = text
       .split(/\n+/)
       .map((line) => line.replace(/^\d+[\.\)]\s*/, "").trim())
+      .map((line) => line.replace(/[—–]/g, " ").replace(/\s{2,}/g, " ").trim())
       .filter((line) => line.length > 10);
 
     return { options: options.slice(0, 3) };
