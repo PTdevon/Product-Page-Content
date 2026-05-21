@@ -45,7 +45,13 @@ export async function GET(req: NextRequest) {
   const search = searchParams.get("search") ?? "";
   const status = searchParams.get("status") ?? "";
 
-  const query = search ? `title:*${search}*` : "";
+  const bestseller = status === "bestseller";
+  const statusFilter = bestseller ? "" : status;
+
+  const queryParts: string[] = [];
+  if (search) queryParts.push(`title:*${search}*`);
+  if (bestseller) queryParts.push(`tag:*bestseller*`);
+  const query = queryParts.join(" AND ");
 
   type MF = { value: string } | null;
   type RawEdge = {
@@ -67,8 +73,8 @@ export async function GET(req: NextRequest) {
   let hasMore = true;
   // When filtering, fetch 250 (Shopify's max) per call so we usually only need one round-trip.
   // Cap at 3 iterations to avoid serverless timeout (covers up to 750 products).
-  const SHOPIFY_BATCH = status ? 250 : PAGE_SIZE;
-  const MAX_ITERATIONS = status ? 3 : 1;
+  const SHOPIFY_BATCH = statusFilter ? 250 : PAGE_SIZE;
+  const MAX_ITERATIONS = statusFilter ? 3 : 1;
   let iterations = 0;
 
   while (matched.length < PAGE_SIZE && hasMore && iterations < MAX_ITERATIONS) {
@@ -80,7 +86,7 @@ export async function GET(req: NextRequest) {
     for (const edge of data.products.edges) {
       if (matched.length >= PAGE_SIZE) break;
       const cs = contentStatus(edge.node);
-      if (!status || cs === status) {
+      if (!statusFilter || cs === statusFilter) {
         matched.push({
           product: {
             id: edge.node.id,

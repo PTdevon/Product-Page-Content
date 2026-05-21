@@ -64,6 +64,7 @@ export default function ProductsPage() {
               className="w-full px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
               <option value="">All products</option>
+              <option value="bestseller">Bestsellers</option>
               <option value="missing">Missing content</option>
               <option value="partial">Partial content</option>
               <option value="complete">Complete</option>

@@ -86,26 +86,17 @@ export function assignPerfectFor(
   library: PerfectForEntry[],
   dateConfig: DateRangeConfig,
   today: Date,
-  seed?: number,
-  seasonalOverrides?: SeasonalOverrides
+  seed?: number
 ): AssignedPerfectFor {
   const rand = seed !== undefined ? seededRandom(seed) : Math.random.bind(Math);
+  void rand;
 
-  // Step 1: filter
+  // Step 1: filter — seasonal entries always excluded (handled by theme at display time)
   const candidates = library.filter((entry) => {
+    if (entry.timeSensitive) return false;
     const typeMatch = entry.productType === "ALL" || entry.productType === product.productType;
     const styleMatch = entry.productStyle === "ALL" || product.productStyles.includes(entry.productStyle);
-    if (!typeMatch || !styleMatch) return false;
-
-    if (entry.timeSensitive) {
-      const key = timeSensitiveKey(entry.timeSensitive);
-      if (!key) return false;
-      const overrideActive = seasonalOverrides?.[key] === true;
-      if (!overrideActive && !isWithinDateRange(today, dateConfig[key])) return false;
-    }
-
-    // Phase 1: interest-filtered entries included unconditionally
-    return true;
+    return typeMatch && styleMatch;
   });
 
   // Step 2: sort by specificity
@@ -127,7 +118,6 @@ export function assignPerfectFor(
     const pick = idx >= 0 ? remaining.splice(idx, 1)[0] : remaining.shift()!;
     selected.push(pick);
     categoryCounts[pick.category] = (categoryCounts[pick.category] ?? 0) + 1;
-    void rand; // keep reference to suppress unused warning
   }
 
   return {

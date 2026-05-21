@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
   const authError = await requireAuth(req);
   if (authError) return authError;
 
-  const { productId, productType, productStyles, seasonalOverrides } = await req.json();
+  const { productId, productType, productStyles } = await req.json();
   const styles: string[] = Array.isArray(productStyles) ? productStyles : [productStyles].filter(Boolean);
 
   let title = "";
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
   const settings = await getSettings();
 
   const wct = assignWhyChooseThis(ctx, wctLibrary);
-  const pf = assignPerfectFor(ctx, pfLibrary, settings.dateRanges, new Date(), undefined, seasonalOverrides);
+  const pf = assignPerfectFor(ctx, pfLibrary, settings.dateRanges, new Date());
 
   const wctCategories = ["Stands Out", "Gift Impact", "Trusted Pick", "Worth Keeping"];
   const wctSlotCounts = wctCategories.map(
@@ -43,6 +43,7 @@ export async function POST(req: NextRequest) {
   );
   const wctHasAlternatives = wctSlotCounts.some((c) => c > 1);
   const pfSwapCount = pfLibrary.filter((e) => {
+    if (e.timeSensitive) return false;
     const typeMatch = e.productType === "ALL" || e.productType === ctx.productType;
     const styleMatch = e.productStyle === "ALL" || ctx.productStyles.includes(e.productStyle);
     return typeMatch && styleMatch;

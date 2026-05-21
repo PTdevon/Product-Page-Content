@@ -4,6 +4,7 @@ const links = [
   { href: "/products", label: "Products", key: "products" },
   { href: "/bulk", label: "Bulk Assign", key: "bulk" },
   { href: "/library", label: "Library", key: "library" },
+  { href: "/icons", label: "Perfect For Icons", key: "icons" },
   { href: "/settings", label: "Settings", key: "settings" },
 ];
 

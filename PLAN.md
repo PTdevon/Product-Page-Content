@@ -489,18 +489,23 @@ NODE_ENV=production
 
 **Verify:** Set type/style → preview bullets → save → visit `?view=pdp-redesign` → all 3 sections render correctly.
 
-### Phase 2 — Icons + settings store ← NEXT
+### Phase 2 — Icons + settings store ✅ COMPLETE
 
-1. ⬜ Populate `/public/icons/` with ~50 built-in SVGs
-2. ⬜ `lib/icons.ts` + `GET/POST /api/icons`
-3. ⬜ Icon picker in Perfect For Swap modal (grid of built-in + uploaded icons)
-4. ⬜ Icon preview alongside each Perfect For slot in the editor
-5. ⬜ `lib/settings-store.ts` using Shopify Metaobject
-6. ⬜ Settings page: date range pickers for Mother's/Father's/Valentine's Day
+1. ✅ Populate `/public/icons/` with ~25 built-in SVGs
+2. ✅ `lib/icons.ts` + `GET/POST /api/icons` — built-in icon list + custom SVG upload via Shopify Metaobject (`pdp_uploaded_icons`)
+3. ✅ Icon picker (`components/IconPicker.tsx`) in Perfect For Swap modal — built-in + uploaded icons
+4. ✅ Icon preview alongside each Perfect For slot in the editor; `normalizeIcon()` handles SVG↔name round-trip
+5. ✅ `lib/settings-store.ts` using Shopify Metaobject (`pdp_app_settings`)
+6. ✅ Settings page: date range pickers for Mother's/Father's/Valentine's Day (no toggles — blank = off)
+7. ✅ Perfect For Icons page (`/icons`) — icon library + phrase assignments grouped by icon; click phrase to reassign
+8. ✅ `lib/pf-icon-overrides-store.ts` + `PATCH /api/library` — icon overrides stored in Shopify Metaobject (`pdp_pf_icon_overrides`); merged into library responses at read time
+9. ✅ Seasonal phrase logic fixed — seasonal entries never stored in metafields; assignment engine always returns 4 non-seasonal bullets; seasonal injection deferred to theme (Task #1)
+10. ✅ Bestseller filter on products list (tag-based Shopify query)
+11. ✅ "Regenerate Why People Love" button hidden when no alternatives exist (not just greyed out)
 
 **Verify:** Swap Perfect For bullet → icon picker shows → new icon saved to metafield → renders in theme. Date range set → seasonal phrase included in preview.
 
-### Phase 3 — Bulk assign + library browser + interest filters
+### Phase 3 — Bulk assign + library browser + interest filters ← NEXT
 
 1. ⬜ `POST /api/bulk-assign` with SSE streaming + bulk assign UI (`/bulk`)
 2. ⬜ Library browser (`/library`) with filters, tables, icon previews

@@ -47,6 +47,7 @@ export default function SwapModal({ type, slotIndex, slotLabel, productType, pro
   }, [type, slotIndex, productType, productStyles.join(",")]);
 
   const filtered = entries.filter((e) => {
+    if (type === "perfect" && (e as PerfectForEntry).timeSensitive) return false;
     const text = type === "why"
       ? `${(e as WhyChooseThisEntry).text} ${(e as WhyChooseThisEntry).subtext}`
       : (e as PerfectForEntry).phrase;
@@ -119,11 +120,20 @@ export default function SwapModal({ type, slotIndex, slotLabel, productType, pro
                 <li key={e.id}>
                   <button
                     onClick={() => onSelect(e.phrase, e.icon)}
-                    className="w-full text-left px-5 py-3 hover:bg-gray-50 transition-colors group"
+                    className="w-full text-left px-5 py-3 hover:bg-gray-50 transition-colors group flex items-center gap-3"
                   >
-                    <span className="text-gray-800 text-sm group-hover:text-gray-900">{e.phrase}</span>
-                    <div className="text-[11px] text-gray-400 mt-1">
-                      {e.productType} · {e.productStyle} · {e.category}
+                    {e.icon && (
+                      <img
+                        src={e.icon.startsWith("https://") ? e.icon : `/icons/${e.icon}.svg`}
+                        alt=""
+                        className="w-5 h-5 shrink-0 opacity-60 group-hover:opacity-90"
+                      />
+                    )}
+                    <div className="min-w-0">
+                      <span className="text-gray-800 text-sm group-hover:text-gray-900">{e.phrase}</span>
+                      <div className="text-[11px] text-gray-400 mt-0.5">
+                        {e.productType} · {e.productStyle} · {e.category}
+                      </div>
                     </div>
                   </button>
                 </li>

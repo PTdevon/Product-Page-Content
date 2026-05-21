@@ -44,12 +44,27 @@ export async function GET(
     );
     const wctHasAlternatives = wctSlotCounts.some((c) => c > 1);
     const pfSwapCount = pfLibrary.filter((e) => {
+      if (e.timeSensitive) return false;
       const typeMatch = e.productType === "ALL" || e.productType === ctx.productType;
       const styleMatch = e.productStyle === "ALL" || ctx.productStyles.includes(e.productStyle);
       return typeMatch && styleMatch;
     }).length;
     preview = { whyChooseThis: wct, perfectFor: pf, wctHasAlternatives, wctSlotCounts, pfSwapCount };
   }
+
+  // For products saved before icon support, fill empty icons from the library by phrase match
+  const pf = metafields.perfectFor;
+  const iconFallback = (phrase: string, existing: string) => {
+    if (existing) return existing;
+    return pfLibrary.find((e) => e.phrase === phrase)?.icon ?? "";
+  };
+  metafields.perfectFor = {
+    ...pf,
+    icon1: iconFallback(pf.bullet1, pf.icon1),
+    icon2: iconFallback(pf.bullet2, pf.icon2),
+    icon3: iconFallback(pf.bullet3, pf.icon3),
+    icon4: iconFallback(pf.bullet4, pf.icon4),
+  };
 
   return NextResponse.json({ product, metafields, preview });
 }

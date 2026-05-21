@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { PRODUCT_TYPES, getValidStyles } from "@/data/taxonomy";
 import SwapModal from "./SwapModal";
+import IconPicker from "./IconPicker";
 
 const WCT_SLOTS = [
   {
@@ -74,6 +75,16 @@ interface ProductData {
   } | null;
 }
 
+// SVG strings saved to Shopify metafields have id="name" — extract it so the editor always holds plain names
+function normalizeIcon(icon: string): string {
+  if (!icon || icon.startsWith("https://")) return icon;
+  if (icon.startsWith("<svg")) {
+    const m = icon.match(/\bid="([^"]+)"/);
+    return m ? m[1] : icon;
+  }
+  return icon;
+}
+
 // Parse "<strong>Text</strong> Subtext" into {text, subtext}
 function parseBullet(html: string): { text: string; subtext: string } {
   const m = html.match(/^<strong>(.*?)<\/strong>\s*(.*)/);
@@ -115,6 +126,7 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
   const [wctEditing, setWctEditing] = useState<{ key: keyof WCTBullets; text: string; subtext: string } | null>(null);
   const [pfSlots, setPfSlots] = useState<PFSlot[]>([{ phrase: "", icon: "" }, { phrase: "", icon: "" }, { phrase: "", icon: "" }, { phrase: "", icon: "" }]);
   const [swapModal, setSwapModal] = useState<{ type: "why" | "perfect"; slotIndex: number } | null>(null);
+  const [iconPickerSlot, setIconPickerSlot] = useState<number | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [reassigningWct, setReassigningWct] = useState(false);
   const [wctHasAlternatives, setWctHasAlternatives] = useState(true);
@@ -144,10 +156,10 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
         const pf = d.metafields.perfectFor;
         if (pf.bullet1) {
           setPfSlots([
-            { phrase: pf.bullet1, icon: pf.icon1 },
-            { phrase: pf.bullet2, icon: pf.icon2 },
-            { phrase: pf.bullet3, icon: pf.icon3 },
-            { phrase: pf.bullet4, icon: pf.icon4 },
+            { phrase: pf.bullet1, icon: normalizeIcon(pf.icon1) },
+            { phrase: pf.bullet2, icon: normalizeIcon(pf.icon2) },
+            { phrase: pf.bullet3, icon: normalizeIcon(pf.icon3) },
+            { phrase: pf.bullet4, icon: normalizeIcon(pf.icon4) },
           ]);
         }
       })
@@ -511,19 +523,14 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
               })}
             </div>
             )}
-            {productType && productStyles.length > 0 && (
-              <span
-                title={!wctHasAlternatives ? "No alternative options available for this type and style" : undefined}
-                className="mt-2 inline-block"
+            {productType && productStyles.length > 0 && wctHasAlternatives && (
+              <button
+                onClick={handleReassignWct}
+                disabled={reassigningWct}
+                className="mt-2 px-4 py-2 bg-white border border-gray-400 text-gray-800 text-sm font-medium rounded-md hover:bg-gray-50 hover:border-gray-600 disabled:opacity-50 transition-colors"
               >
-                <button
-                  onClick={handleReassignWct}
-                  disabled={reassigningWct || !wctHasAlternatives}
-                  className="px-4 py-2 bg-white border border-gray-400 text-gray-800 text-sm font-medium rounded-md hover:bg-gray-50 hover:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  {reassigningWct ? "Regenerating…" : "Regenerate Why People Love"}
-                </button>
-              </span>
+                {reassigningWct ? "Regenerating…" : "Regenerate Why People Love"}
+              </button>
             )}
           </section>
 
@@ -558,6 +565,26 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
                       </svg>
                     </button>
                   </div>
+                  <button
+                    onClick={() => setIconPickerSlot(i)}
+                    title="Change icon"
+                    className="shrink-0 w-7 h-7 flex items-center justify-center rounded-md hover:bg-gray-100 transition-colors group"
+                  >
+                    {!slot.icon ? (
+                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-gray-300 group-hover:text-gray-500">
+                        <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 8v8M8 12h8"/>
+                      </svg>
+                    ) : slot.icon.startsWith("<svg") ? (
+                      <span
+                        className="w-5 h-5 flex items-center justify-center opacity-70 group-hover:opacity-100 [&>svg]:w-5 [&>svg]:h-5"
+                        dangerouslySetInnerHTML={{ __html: slot.icon }}
+                      />
+                    ) : slot.icon.startsWith("https://") ? (
+                      <img src={slot.icon} alt="" className="w-5 h-5 opacity-70 group-hover:opacity-100" />
+                    ) : (
+                      <img src={`/icons/${slot.icon}.svg`} alt={slot.icon} className="w-5 h-5 opacity-70 group-hover:opacity-100" />
+                    )}
+                  </button>
                   <span className="text-sm text-gray-700 flex-1">
                     {slot.phrase || <em className="text-gray-400 not-italic">Empty</em>}
                   </span>
@@ -621,6 +648,21 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
           productStyles={productStyles}
           onSelect={handleSwapSelect}
           onClose={() => setSwapModal(null)}
+        />
+      )}
+
+      {/* Icon picker */}
+      {iconPickerSlot !== null && (
+        <IconPicker
+          current={pfSlots[iconPickerSlot]?.icon ?? ""}
+          onSelect={(icon) => {
+            setPfSlots((prev) => {
+              const arr = [...prev];
+              arr[iconPickerSlot] = { ...arr[iconPickerSlot], icon };
+              return arr;
+            });
+          }}
+          onClose={() => setIconPickerSlot(null)}
         />
       )}
     </div>
