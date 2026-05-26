@@ -7,7 +7,7 @@ export interface ProductMetafieldData {
   whyChooseThis: { bullet1: string; bullet2: string; bullet3: string; bullet4: string };
   perfectFor: {
     bullet1: string; bullet2: string; bullet3: string; bullet4: string;
-    icon1: string; icon2: string; icon3: string; icon4: string;
+    icon1?: string; icon2?: string; icon3?: string; icon4?: string;
   };
 }
 

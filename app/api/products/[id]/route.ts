@@ -60,10 +60,10 @@ export async function GET(
   };
   metafields.perfectFor = {
     ...pf,
-    icon1: iconFallback(pf.bullet1, pf.icon1),
-    icon2: iconFallback(pf.bullet2, pf.icon2),
-    icon3: iconFallback(pf.bullet3, pf.icon3),
-    icon4: iconFallback(pf.bullet4, pf.icon4),
+    icon1: iconFallback(pf.bullet1, pf.icon1 ?? ""),
+    icon2: iconFallback(pf.bullet2, pf.icon2 ?? ""),
+    icon3: iconFallback(pf.bullet3, pf.icon3 ?? ""),
+    icon4: iconFallback(pf.bullet4, pf.icon4 ?? ""),
   };
 
   return NextResponse.json({ product, metafields, preview });

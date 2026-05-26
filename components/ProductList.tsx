@@ -1,14 +1,24 @@
 import type { ProductSummary } from "@/lib/types";
 
-const statusColors: Record<string, string> = {
-  complete: "bg-green-100 text-green-800",
-  partial:  "bg-amber-100 text-amber-800",
-  missing:  "bg-red-50 text-red-600 ring-1 ring-red-200",
+const classifyColors: Record<string, string> = {
+  complete: "bg-green-100 text-green-700",
+  partial:  "bg-yellow-100 text-yellow-800",
+  missing:  "bg-gray-100 text-gray-500",
 };
-const statusLabels: Record<string, string> = {
-  complete: "Complete",
+const classifyLabels: Record<string, string> = {
+  complete: "Type and Style set",
+  partial:  "Part. classified",
+  missing:  "No Type/Style set",
+};
+const contentColors: Record<string, string> = {
+  complete: "bg-green-100 text-green-700",
+  partial:  "bg-amber-100 text-amber-800",
+  missing:  "bg-gray-100 text-gray-500",
+};
+const contentLabels: Record<string, string> = {
+  complete: "Content set",
   partial:  "Partial",
-  missing:  "Missing",
+  missing:  "No Content set",
 };
 
 interface Props {
@@ -60,9 +70,14 @@ export default function ProductList({ products, loading, selectedId, onSelect, o
                   {p.productTypePt || "—"} {p.productStylePt ? `· ${p.productStylePt}` : ""}
                 </div>
               </div>
-              <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0 tracking-wide ${statusColors[p.contentStatus]}`}>
-                {statusLabels[p.contentStatus]}
-              </span>
+              <div className="flex flex-col gap-0.5 items-end shrink-0">
+                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full tracking-wide ${classifyColors[p.classifyStatus]}`}>
+                  {classifyLabels[p.classifyStatus]}
+                </span>
+                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full tracking-wide ${contentColors[p.contentStatus]}`}>
+                  {contentLabels[p.contentStatus]}
+                </span>
+              </div>
             </button>
           </li>
         ))}

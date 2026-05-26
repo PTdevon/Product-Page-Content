@@ -23,30 +23,39 @@ interface ClassifyRow {
 }
 
 type ClassifyPhase = "idle" | "streaming" | "review" | "saving" | "saved";
+type ContentPhase  = "idle" | "loading" | "review" | "saving" | "saved";
 
-interface ProgressEntry {
+interface ContentRow {
   productId: string;
   title: string;
-  status: "ok" | "skipped" | "error";
-  summaryStatus?: "generated" | "failed";
-  message?: string;
+  imageUrl: string | null;
+  productTypePt: string;
+  productStylePt: string;
+  summary: string;
+  wctBullets: [string, string, string, string];
+  pfBullets:  [string, string, string, string];
+  pfIcons:    [string, string, string, string];
+  skip: boolean;
+  regenerating: boolean;
 }
 
-interface DoneStats {
-  total: number;
-  succeeded: number;
-  skipped: number;
-  failed: number;
-}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function StatusBadge({ status }: { status: ProductSummary["contentStatus"] }) {
+function ClassifyBadge({ status }: { status: ProductSummary["classifyStatus"] }) {
   if (status === "complete")
-    return <span className="px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700">Complete</span>;
+    return <span className="px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700">Type and Style set</span>;
   if (status === "partial")
-    return <span className="px-2 py-0.5 rounded-full text-xs bg-yellow-100 text-yellow-700">Partial</span>;
-  return <span className="px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-600">Missing</span>;
+    return <span className="px-2 py-0.5 rounded-full text-xs bg-yellow-100 text-yellow-700">Part. classified</span>;
+  return <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-500">No Type and Style set</span>;
+}
+
+function ContentBadge({ status }: { status: ProductSummary["contentStatus"] }) {
+  if (status === "complete")
+    return <span className="px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700">Content set</span>;
+  if (status === "partial")
+    return <span className="px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-700">Partial content</span>;
+  return <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-500">No Content set</span>;
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
@@ -57,18 +66,17 @@ export default function BulkPage() {
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("missing");
+  const [statusFilter, setStatusFilter] = useState("needs-classify");
   const [typeFilter, setTypeFilter] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [pageSize, setPageSize] = useState(25);
   const cursorRef = useRef<string | null>(null);
 
-  // Assign workflow state
+  // Content review workflow state
   const [skipComplete, setSkipComplete] = useState(true);
-  const [assigning, setAssigning] = useState(false);
-  const [progressLog, setProgressLog] = useState<ProgressEntry[]>([]);
-  const [done, setDone] = useState<DoneStats | null>(null);
-  const progressRef = useRef<HTMLDivElement>(null);
+  const [contentRows, setContentRows] = useState<ContentRow[]>([]);
+  const [contentPhase, setContentPhase] = useState<ContentPhase>("idle");
+  const [contentSaveResult, setContentSaveResult] = useState<{ saved: number; failed: number } | null>(null);
 
   // Classify workflow state
   const [classifyRows, setClassifyRows] = useState<ClassifyRow[]>([]);
@@ -264,69 +272,89 @@ export default function BulkPage() {
     (r) => !r.skip && !r.error && r.selectedType && r.selectedStyles.length > 0
   ).length;
 
-  // ── Assign workflow ──────────────────────────────────────────────────────
+  // ── Content review workflow ───────────────────────────────────────────────
 
-  async function handleAssign() {
+  async function handleSetContent() {
     const ids = selectedWithTypeStyle.map((p) => p.id);
-    if (ids.length === 0 || assigning) return;
+    if (ids.length === 0 || contentPhase !== "idle") return;
 
-    setAssigning(true);
-    setProgressLog([]);
-    setDone(null);
+    setContentPhase("loading");
+    setContentRows([]);
+    setContentSaveResult(null);
 
-    try {
-      const res = await fetch("/api/bulk-assign", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productIds: ids, skipComplete }),
-      });
+    const res = await fetch("/api/bulk-content-review", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ productIds: ids }),
+    });
 
-      if (!res.ok || !res.body) {
-        setDone({ total: ids.length, succeeded: 0, skipped: 0, failed: ids.length });
-        setAssigning(false);
-        return;
-      }
+    if (!res.ok) { setContentPhase("idle"); return; }
 
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done: streamDone, value } = await reader.read();
-        if (streamDone) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          try {
-            const event = JSON.parse(line.slice(6));
-            if (event.type === "progress") {
-              setProgressLog((prev) => [...prev, event as ProgressEntry]);
-              setTimeout(() => {
-                if (progressRef.current)
-                  progressRef.current.scrollTop = progressRef.current.scrollHeight;
-              }, 0);
-            } else if (event.type === "done") {
-              setDone(event as DoneStats);
-            }
-          } catch { /* ignore */ }
-        }
-      }
-    } catch {
-      setDone({ total: ids.length, succeeded: 0, skipped: 0, failed: ids.length });
-    }
-
-    setAssigning(false);
+    const data = await res.json();
+    const rows: ContentRow[] = (data.rows as ContentRow[]).map((r) => ({
+      ...r,
+      skip: skipComplete && !!(r.summary && r.wctBullets[0] && r.pfBullets[0]),
+    }));
+    setContentRows(rows);
+    setContentPhase("review");
   }
 
-  function handleDone() {
-    setDone(null);
-    setProgressLog([]);
-    setSelectedIds(new Set());
-    cursorRef.current = null;
-    fetchProducts(true);
+  async function handleRegenerateContent(productId: string) {
+    setContentRows((rows) => rows.map((r) => r.productId === productId ? { ...r, regenerating: true } : r));
+
+    const res = await fetch("/api/generate-content", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ productId }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      setContentRows((rows) => rows.map((r) =>
+        r.productId === productId
+          ? { ...r, regenerating: false, summary: data.summary, wctBullets: data.wctBullets, pfBullets: data.pfBullets, pfIcons: data.pfIcons }
+          : r
+      ));
+    } else {
+      setContentRows((rows) => rows.map((r) => r.productId === productId ? { ...r, regenerating: false } : r));
+    }
+  }
+
+  async function handleSaveContent() {
+    const toSave = contentRows.filter((r) => !r.skip);
+    if (toSave.length === 0 || contentPhase !== "review") return;
+
+    setContentPhase("saving");
+
+    const res = await fetch("/api/bulk-content-save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        rows: toSave.map((r) => ({
+          productId: r.productId,
+          summary: r.summary,
+          wctBullets: r.wctBullets,
+          pfBullets: r.pfBullets,
+          pfIcons: r.pfIcons,
+        })),
+      }),
+    });
+
+    const data = res.ok ? await res.json() : { saved: 0, failed: toSave.length };
+    setContentSaveResult(data);
+    setContentPhase("saved");
+  }
+
+  function handleCloseContent() {
+    const wasSaved = contentPhase === "saved";
+    setContentPhase("idle");
+    setContentRows([]);
+    setContentSaveResult(null);
+    if (wasSaved) {
+      setSelectedIds(new Set());
+      cursorRef.current = null;
+      fetchProducts(true);
+    }
   }
 
   // ── Layout state ─────────────────────────────────────────────────────────
@@ -338,8 +366,8 @@ export default function BulkPage() {
   );
   const populateCount = selectedWithTypeStyle.length;
   const showClassify = classifyPhase !== "idle";
-  const showAssign = assigning || done !== null;
-  const showRightPanel = showClassify || showAssign;
+  const showContent  = contentPhase !== "idle";
+  const showRightPanel = showClassify || showContent;
 
   // ── Render ───────────────────────────────────────────────────────────────
 
@@ -362,8 +390,8 @@ export default function BulkPage() {
           className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         >
           <option value="">All products</option>
-          <option value="missing">Missing content</option>
-          <option value="partial">Partial content</option>
+          <option value="needs-classify">Needs classification</option>
+          <option value="ready-to-populate">Ready to populate</option>
           <option value="complete">Complete</option>
         </select>
         <select
@@ -409,7 +437,8 @@ export default function BulkPage() {
                   <th className="px-4 py-2.5 text-left font-medium text-gray-600 text-xs uppercase tracking-wide">Product</th>
                   <th className="px-4 py-2.5 text-left font-medium text-gray-600 text-xs uppercase tracking-wide">Type</th>
                   <th className="px-4 py-2.5 text-left font-medium text-gray-600 text-xs uppercase tracking-wide">Style</th>
-                  <th className="px-4 py-2.5 text-left font-medium text-gray-600 text-xs uppercase tracking-wide">Status</th>
+                  <th className="px-4 py-2.5 text-left font-medium text-gray-600 text-xs uppercase tracking-wide">Step 1</th>
+                  <th className="px-4 py-2.5 text-left font-medium text-gray-600 text-xs uppercase tracking-wide">Step 2</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -436,18 +465,21 @@ export default function BulkPage() {
                       {p.productStylePt || <span className="text-red-400">—</span>}
                     </td>
                     <td className="px-4 py-2.5">
-                      <StatusBadge status={p.contentStatus} />
+                      <ClassifyBadge status={p.classifyStatus} />
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <ContentBadge status={p.contentStatus} />
                     </td>
                   </tr>
                 ))}
                 {loading && (
                   <tr>
-                    <td colSpan={5} className="px-4 py-10 text-center text-gray-400 text-sm">Loading…</td>
+                    <td colSpan={6} className="px-4 py-10 text-center text-gray-400 text-sm">Loading…</td>
                   </tr>
                 )}
                 {!loading && filteredProducts.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-4 py-10 text-center text-gray-400 text-sm">No products found</td>
+                    <td colSpan={6} className="px-4 py-10 text-center text-gray-400 text-sm">No products found</td>
                   </tr>
                 )}
               </tbody>
@@ -488,17 +520,17 @@ export default function BulkPage() {
             </span>
             <button
               onClick={handleClassify}
-              disabled={selectedCount === 0 || classifyPhase !== "idle" || assigning}
-              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm rounded disabled:opacity-40 hover:bg-gray-50 transition-colors"
-            >
-              Classify Type &amp; Style{selectedCount > 0 ? ` (${selectedCount})` : ""}
-            </button>
-            <button
-              onClick={handleAssign}
-              disabled={populateCount === 0 || assigning || classifyPhase !== "idle"}
+              disabled={selectedCount === 0 || classifyPhase !== "idle" || contentPhase !== "idle"}
               className="px-4 py-2 bg-gray-900 text-white text-sm rounded disabled:opacity-40 hover:bg-gray-700 transition-colors"
             >
-              {assigning ? "Populating…" : `Populate Content${populateCount > 0 ? ` (${populateCount})` : ""}`}
+              Set Type &amp; Style{selectedCount > 0 ? ` (${selectedCount})` : ""}
+            </button>
+            <button
+              onClick={handleSetContent}
+              disabled={populateCount === 0 || contentPhase !== "idle" || classifyPhase !== "idle"}
+              className="px-4 py-2 bg-gray-900 text-white text-sm rounded disabled:opacity-40 hover:bg-gray-700 transition-colors"
+            >
+              {contentPhase === "loading" ? "Loading…" : `Set Content${populateCount > 0 ? ` (${populateCount})` : ""}`}
             </button>
           </div>
         </div>
@@ -644,63 +676,149 @@ export default function BulkPage() {
                       disabled={approvedCount === 0 || classifyPhase === "streaming"}
                       className="px-4 py-2 bg-gray-900 text-white text-sm rounded disabled:opacity-40 hover:bg-gray-700 transition-colors"
                     >
-                      Save {approvedCount > 0 ? `${approvedCount} approved` : ""}
+                      {approvedCount > 0 ? `Save (${approvedCount})` : "Save"}
                     </button>
                   )}
                 </div>
               </>
             )}
 
-            {/* ── Assign progress panel ── */}
-            {showAssign && (
-              <>
-                <div className="px-4 py-3 border-b border-gray-200 bg-white flex items-center justify-between shrink-0">
-                  <span className="font-medium text-sm text-gray-900">
-                    {assigning ? "Populating content…" : "Done"}
-                  </span>
-                  {done && (
-                    <span className="text-xs text-gray-500">
-                      {done.succeeded} saved · {done.skipped} skipped · {done.failed} failed
+            {/* ── Content review panel ── */}
+            {showContent && (() => {
+              const saveCount = contentRows.filter((r) => !r.skip).length;
+              const anyRegenerating = contentRows.some((r) => r.regenerating);
+              return (
+                <>
+                  <div className="px-4 py-3 border-b border-gray-200 bg-white flex items-center justify-between shrink-0">
+                    <span className="font-medium text-sm text-gray-900">
+                      {contentPhase === "loading" && "Loading content…"}
+                      {contentPhase === "review" && `Review Content (${contentRows.length})`}
+                      {contentPhase === "saving" && "Saving…"}
+                      {contentPhase === "saved" && "Saved"}
                     </span>
-                  )}
-                </div>
-
-                <div ref={progressRef} className="flex-1 overflow-y-auto p-4 space-y-1 font-mono text-xs">
-                  {progressLog.map((entry, i) => (
-                    <div
-                      key={i}
-                      className={`flex gap-2 items-start ${
-                        entry.status === "ok" ? "text-green-700"
-                        : entry.status === "skipped" ? "text-gray-400"
-                        : "text-red-600"
-                      }`}
-                    >
-                      <span className="shrink-0 select-none">
-                        {entry.status === "ok" ? "✓" : entry.status === "skipped" ? "–" : "✗"}
+                    {contentSaveResult && (
+                      <span className="text-xs text-gray-500">
+                        {contentSaveResult.saved} saved · {contentSaveResult.failed} failed
                       </span>
-                      <span className="break-all">{entry.title}</span>
-                      {entry.status === "ok" && entry.summaryStatus === "failed" && (
-                        <span className="shrink-0 text-yellow-600">(summary failed)</span>
-                      )}
-                      {entry.message && (
-                        <span className="shrink-0 text-gray-400">({entry.message})</span>
-                      )}
-                    </div>
-                  ))}
-                  {assigning && progressLog.length === 0 && (
-                    <div className="text-gray-400">Starting…</div>
-                  )}
-                </div>
-
-                {done && (
-                  <div className="border-t border-gray-200 px-4 py-3 bg-white shrink-0">
-                    <button onClick={handleDone} className="text-sm text-blue-600 hover:underline">
-                      Close and refresh list
-                    </button>
+                    )}
                   </div>
-                )}
-              </>
-            )}
+
+                  <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                    {contentPhase === "loading" && (
+                      <div className="text-center text-gray-400 text-sm py-8">Loading…</div>
+                    )}
+                    {contentRows.map((row) => (
+                      <div key={row.productId} className={`bg-white rounded-lg border border-gray-200 ${row.skip ? "opacity-40" : ""}`}>
+                        {/* Product header */}
+                        <div className="flex items-center gap-3 p-3 border-b border-gray-100">
+                          {row.imageUrl ? (
+                            <img src={row.imageUrl} alt="" className="w-10 h-10 object-cover rounded shrink-0" />
+                          ) : (
+                            <div className="w-10 h-10 bg-gray-100 rounded shrink-0" />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-sm text-gray-900 truncate">{row.title}</div>
+                            <div className="text-xs text-gray-400">{row.productTypePt} · {row.productStylePt}</div>
+                          </div>
+                          <button
+                            onClick={() => handleRegenerateContent(row.productId)}
+                            disabled={row.skip || row.regenerating || anyRegenerating || contentPhase === "saving" || contentPhase === "saved"}
+                            className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-40 transition-colors shrink-0"
+                          >
+                            {row.regenerating ? "Regenerating…" : "Regenerate"}
+                          </button>
+                          <label className="flex items-center gap-1 text-xs text-gray-600 shrink-0 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={row.skip}
+                              onChange={(e) => setContentRows((rows) => rows.map((r) => r.productId === row.productId ? { ...r, skip: e.target.checked } : r))}
+                              disabled={contentPhase === "saving" || contentPhase === "saved"}
+                              className="rounded border-gray-300"
+                            />
+                            Skip
+                          </label>
+                        </div>
+
+                        {/* Fields */}
+                        <div className="p-3 space-y-3">
+                          <div>
+                            <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Summary</label>
+                            <textarea
+                              value={row.summary}
+                              onChange={(e) => setContentRows((rows) => rows.map((r) => r.productId === row.productId ? { ...r, summary: e.target.value } : r))}
+                              disabled={row.skip || row.regenerating || contentPhase === "saving" || contentPhase === "saved"}
+                              rows={3}
+                              className="w-full text-xs border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-400 resize-none"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Why Choose This</label>
+                            <div className="space-y-1">
+                              {row.wctBullets.map((bullet, i) => (
+                                <input
+                                  key={i}
+                                  type="text"
+                                  value={bullet}
+                                  onChange={(e) => {
+                                    const next = [...row.wctBullets] as [string, string, string, string];
+                                    next[i] = e.target.value;
+                                    setContentRows((rows) => rows.map((r) => r.productId === row.productId ? { ...r, wctBullets: next } : r));
+                                  }}
+                                  disabled={row.skip || row.regenerating || contentPhase === "saving" || contentPhase === "saved"}
+                                  placeholder={`Bullet ${i + 1}`}
+                                  className="w-full text-xs border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-400"
+                                />
+                              ))}
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Perfect For</label>
+                            <div className="space-y-1">
+                              {row.pfBullets.map((bullet, i) => (
+                                <input
+                                  key={i}
+                                  type="text"
+                                  value={bullet}
+                                  onChange={(e) => {
+                                    const next = [...row.pfBullets] as [string, string, string, string];
+                                    next[i] = e.target.value;
+                                    setContentRows((rows) => rows.map((r) => r.productId === row.productId ? { ...r, pfBullets: next } : r));
+                                  }}
+                                  disabled={row.skip || row.regenerating || contentPhase === "saving" || contentPhase === "saved"}
+                                  placeholder={`Bullet ${i + 1}`}
+                                  className="w-full text-xs border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-400"
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="border-t border-gray-200 px-4 py-3 bg-white flex items-center gap-3 shrink-0">
+                    <button
+                      onClick={handleCloseContent}
+                      className="px-4 py-2 border border-gray-300 text-sm text-gray-600 rounded hover:bg-gray-50 transition-colors"
+                    >
+                      {contentPhase === "saved" ? "Close and refresh list" : "Cancel"}
+                    </button>
+                    <div className="flex-1" />
+                    {(contentPhase === "review" || contentPhase === "saving") && (
+                      <button
+                        onClick={handleSaveContent}
+                        disabled={saveCount === 0 || contentPhase === "saving"}
+                        className="px-4 py-2 bg-gray-900 text-white text-sm rounded disabled:opacity-40 hover:bg-gray-700 transition-colors"
+                      >
+                        {saveCount > 0 ? `Save (${saveCount})` : "Save"}
+                      </button>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
 
           </div>
         )}

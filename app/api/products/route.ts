@@ -11,6 +11,7 @@ const LIST_PRODUCTS = `
           id
           title
           handle
+          tags
           featuredImage { url }
           productTypePt: metafield(namespace: "product", key: "product_type_pt") { value }
           productStylePt: metafield(namespace: "product", key: "product_style_pt") { value }
@@ -25,13 +26,34 @@ const LIST_PRODUCTS = `
   }
 `;
 
-function contentStatus(node: { productSummary: { value: string } | null; wctBullet1: { value: string } | null; pfBullet1: { value: string } | null }): ProductSummary["contentStatus"] {
+type StatusValue = "complete" | "partial" | "missing";
+
+function classifyStatus(node: { productTypePt: { value: string } | null; productStylePt: { value: string } | null }): StatusValue {
+  const hasType  = !!node.productTypePt?.value;
+  const hasStyle = !!node.productStylePt?.value;
+  if (hasType && hasStyle) return "complete";
+  if (hasType || hasStyle)  return "partial";
+  return "missing";
+}
+
+function contentStatus(node: { productSummary: { value: string } | null; wctBullet1: { value: string } | null; pfBullet1: { value: string } | null }): StatusValue {
   const summary = node.productSummary?.value ?? "";
   const wct = node.wctBullet1?.value ?? "";
   const pf = node.pfBullet1?.value ?? "";
   if (summary && wct && pf) return "complete";
   if (summary || wct || pf) return "partial";
   return "missing";
+}
+
+function matchesFilter(filter: string, cs: StatusValue, contentSt: StatusValue): boolean {
+  if (!filter) return true;
+  if (filter === "needs-classify")    return cs !== "complete";
+  if (filter === "ready-to-populate") return cs === "complete" && contentSt !== "complete";
+  if (filter === "complete")          return cs === "complete" && contentSt === "complete";
+  // Legacy values used by the products page
+  if (filter === "missing")  return contentSt === "missing";
+  if (filter === "partial")  return contentSt === "partial";
+  return true;
 }
 
 export async function GET(req: NextRequest) {
@@ -49,6 +71,7 @@ export async function GET(req: NextRequest) {
   const statusFilter = bestseller ? "" : status;
 
   const queryParts: string[] = [];
+  queryParts.push(`-tag:hidden`);
   if (search) queryParts.push(`title:*${search}*`);
   if (bestseller) queryParts.push(`tag:*bestseller*`);
   const query = queryParts.join(" AND ");
@@ -56,7 +79,7 @@ export async function GET(req: NextRequest) {
   type MF = { value: string } | null;
   type RawEdge = {
     node: {
-      id: string; title: string; handle: string;
+      id: string; title: string; handle: string; tags: string[];
       featuredImage: { url: string } | null;
       productTypePt: MF; productStylePt: MF;
       productSummary: MF; wctBullet1: MF; pfBullet1: MF;
@@ -85,8 +108,10 @@ export async function GET(req: NextRequest) {
 
     for (const edge of data.products.edges) {
       if (matched.length >= PAGE_SIZE) break;
-      const cs = contentStatus(edge.node);
-      if (!statusFilter || cs === statusFilter) {
+      if (edge.node.tags.includes("hidden")) continue;
+      const cs        = classifyStatus(edge.node);
+      const contentSt = contentStatus(edge.node);
+      if (!statusFilter || matchesFilter(statusFilter, cs, contentSt)) {
         matched.push({
           product: {
             id: edge.node.id,
@@ -95,7 +120,8 @@ export async function GET(req: NextRequest) {
             featuredImage: edge.node.featuredImage?.url ?? null,
             productTypePt: edge.node.productTypePt?.value ?? "",
             productStylePt: edge.node.productStylePt?.value ?? "",
-            contentStatus: cs,
+            classifyStatus: cs,
+            contentStatus: contentSt,
           },
           cursor: edge.cursor,
         });

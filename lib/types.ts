@@ -26,6 +26,7 @@ export interface ProductSummary {
   featuredImage: string | null;
   productTypePt: string;
   productStylePt: string;
+  classifyStatus: "complete" | "partial" | "missing";
   contentStatus: "complete" | "partial" | "missing";
 }
 
