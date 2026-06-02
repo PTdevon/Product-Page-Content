@@ -37,6 +37,7 @@ interface ContentRow {
   pfIcons:    [string, string, string, string];
   skip: boolean;
   regenerating: boolean;
+  regenerateError?: { message: string; billingUrl?: string };
 }
 
 
@@ -72,6 +73,8 @@ export default function BulkPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [pageSize, setPageSize] = useState(25);
   const cursorRef = useRef<string | null>(null);
+  const controllerRef = useRef<AbortController | null>(null);
+  const fetchEpochRef = useRef(0);
 
   // Content review workflow state
   const [contentRows, setContentRows] = useState<ContentRow[]>([]);
@@ -90,23 +93,29 @@ export default function BulkPage() {
   // Image modal
   const [modalImage, setModalImage] = useState<string | null>(null);
 
+  // Fetch error
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
   // ── Product fetching ─────────────────────────────────────────────────────
 
-  const fetchTotalCount = useCallback(async () => {
+  const fetchTotalCount = useCallback(async (signal?: AbortSignal) => {
     setTotalCount(null);
     const params = new URLSearchParams();
     if (search) params.set("search", search);
     if (statusFilter) params.set("status", statusFilter);
     if (bestseller) params.set("bestseller", "true");
-    const res = await fetch(`/api/products/count?${params}`);
-    if (res.ok) {
+    try {
+      const res = await fetch(`/api/products/count?${params}`, { signal });
+      if (!res.ok) return;
       const data = await res.json();
       setTotalCount(data.count);
-    }
+    } catch { /* abort or network error — leave count as null (shows fallback) */ }
   }, [search, statusFilter, bestseller]);
 
-  const fetchProducts = useCallback(async (reset: boolean) => {
+  const fetchProducts = useCallback(async (reset: boolean, signal?: AbortSignal) => {
     setLoading(true);
+    if (reset) { fetchEpochRef.current += 1; setFetchError(null); }
+    const epoch = fetchEpochRef.current;
     const params = new URLSearchParams();
     if (search) params.set("search", search);
     if (statusFilter) params.set("status", statusFilter);
@@ -114,21 +123,35 @@ export default function BulkPage() {
     params.set("limit", String(pageSize));
     if (!reset && cursorRef.current) params.set("cursor", cursorRef.current);
 
-    const res = await fetch(`/api/products?${params}`);
-    if (!res.ok) { setLoading(false); return; }
-    const data = await res.json();
-
-    setProducts((prev) => (reset ? data.products : [...prev, ...data.products]));
-    setNextCursor(data.nextCursor);
-    cursorRef.current = data.nextCursor;
-    setLoading(false);
+    try {
+      const res = await fetch(`/api/products?${params}`, { signal });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        setFetchError(errData.error ?? "Failed to load products — please try refreshing.");
+        setLoading(false);
+        return;
+      }
+      const data = await res.json();
+      if (fetchEpochRef.current !== epoch) return;
+      setProducts((prev) => (reset ? data.products : [...prev, ...data.products]));
+      setNextCursor(data.nextCursor);
+      cursorRef.current = data.nextCursor;
+      setLoading(false);
+    } catch (err) {
+      if ((err as { name?: string })?.name === "AbortError") return;
+      setFetchError("Network error — please check your connection and try again.");
+      setLoading(false);
+    }
   }, [search, statusFilter, bestseller, pageSize]);
 
   useEffect(() => {
+    const controller = new AbortController();
+    controllerRef.current = controller;
     cursorRef.current = null;
-    fetchProducts(true);
-    fetchTotalCount();
+    fetchProducts(true, controller.signal);
+    fetchTotalCount(controller.signal);
     setSelectedIds(new Set());
+    return () => { controller.abort(); if (controllerRef.current !== controller) controllerRef.current?.abort(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, statusFilter, bestseller, pageSize]);
 
@@ -263,15 +286,18 @@ export default function BulkPage() {
 
     setClassifyPhase("saving");
 
-    const res = await fetch("/api/bulk-classify/save", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ assignments }),
-    });
-
-    const data = await res.json();
-    setClassifySaveResult({ saved: data.saved, failed: data.failed });
-    setClassifyPhase("saved");
+    try {
+      const res = await fetch("/api/bulk-classify/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assignments }),
+      });
+      const data = res.ok ? await res.json() : { saved: 0, failed: assignments.length };
+      setClassifySaveResult({ saved: data.saved, failed: data.failed });
+      setClassifyPhase("saved");
+    } catch {
+      setClassifyPhase("review");
+    }
   }
 
   function handleCloseClassify() {
@@ -282,7 +308,10 @@ export default function BulkPage() {
     if (wasSaved) {
       setSelectedIds(new Set());
       cursorRef.current = null;
-      fetchProducts(true);
+      const controller = new AbortController();
+      controllerRef.current = controller;
+      fetchProducts(true, controller.signal);
+      fetchTotalCount(controller.signal);
     }
   }
 
@@ -318,23 +347,36 @@ export default function BulkPage() {
   }
 
   async function handleRegenerateContent(productId: string) {
-    setContentRows((rows) => rows.map((r) => r.productId === productId ? { ...r, regenerating: true } : r));
+    setContentRows((rows) => rows.map((r) => r.productId === productId ? { ...r, regenerating: true, regenerateError: undefined } : r));
 
-    const res = await fetch("/api/generate-content", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ productId }),
-    });
+    try {
+      const res = await fetch("/api/generate-content", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productId }),
+      });
 
-    if (res.ok) {
-      const data = await res.json();
+      if (res.ok) {
+        const data = await res.json();
+        setContentRows((rows) => rows.map((r) =>
+          r.productId === productId
+            ? { ...r, regenerating: false, summary: data.summary, wctBullets: data.wctBullets, pfBullets: data.pfBullets, pfIcons: data.pfIcons }
+            : r
+        ));
+      } else {
+        let errorInfo: { message: string; billingUrl?: string } = { message: "Failed to regenerate content — please try again." };
+        try {
+          const errData = await res.json();
+          if (errData.error?.message) errorInfo = errData.error;
+        } catch { /* ignore parse failure */ }
+        setContentRows((rows) => rows.map((r) =>
+          r.productId === productId ? { ...r, regenerating: false, regenerateError: errorInfo } : r
+        ));
+      }
+    } catch {
       setContentRows((rows) => rows.map((r) =>
-        r.productId === productId
-          ? { ...r, regenerating: false, summary: data.summary, wctBullets: data.wctBullets, pfBullets: data.pfBullets, pfIcons: data.pfIcons }
-          : r
+        r.productId === productId ? { ...r, regenerating: false, regenerateError: { message: "Network error — please check your connection and try again." } } : r
       ));
-    } else {
-      setContentRows((rows) => rows.map((r) => r.productId === productId ? { ...r, regenerating: false } : r));
     }
   }
 
@@ -344,23 +386,26 @@ export default function BulkPage() {
 
     setContentPhase("saving");
 
-    const res = await fetch("/api/bulk-content-save", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        rows: toSave.map((r) => ({
-          productId: r.productId,
-          summary: r.summary,
-          wctBullets: r.wctBullets,
-          pfBullets: r.pfBullets,
-          pfIcons: r.pfIcons,
-        })),
-      }),
-    });
-
-    const data = res.ok ? await res.json() : { saved: 0, failed: toSave.length };
-    setContentSaveResult(data);
-    setContentPhase("saved");
+    try {
+      const res = await fetch("/api/bulk-content-save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rows: toSave.map((r) => ({
+            productId: r.productId,
+            summary: r.summary,
+            wctBullets: r.wctBullets,
+            pfBullets: r.pfBullets,
+            pfIcons: r.pfIcons,
+          })),
+        }),
+      });
+      const data = res.ok ? await res.json() : { saved: 0, failed: toSave.length };
+      setContentSaveResult(data);
+      setContentPhase("saved");
+    } catch {
+      setContentPhase("review");
+    }
   }
 
   function handleCloseContent() {
@@ -371,7 +416,10 @@ export default function BulkPage() {
     if (wasSaved) {
       setSelectedIds(new Set());
       cursorRef.current = null;
-      fetchProducts(true);
+      const controller = new AbortController();
+      controllerRef.current = controller;
+      fetchProducts(true, controller.signal);
+      fetchTotalCount(controller.signal);
     }
   }
 
@@ -518,7 +566,12 @@ export default function BulkPage() {
                     <td colSpan={6} className="px-4 py-10 text-center text-gray-400 text-sm">Loading…</td>
                   </tr>
                 )}
-                {!loading && filteredProducts.length === 0 && (
+                {!loading && fetchError && (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-10 text-center text-red-500 text-sm">{fetchError}</td>
+                  </tr>
+                )}
+                {!loading && !fetchError && filteredProducts.length === 0 && (
                   <tr>
                     <td colSpan={6} className="px-4 py-10 text-center text-gray-400 text-sm">No products found</td>
                   </tr>
@@ -528,7 +581,7 @@ export default function BulkPage() {
             {nextCursor && !loading && (
               <div className="p-4 text-center border-t border-gray-100">
                 <button
-                  onClick={() => fetchProducts(false)}
+                  onClick={() => fetchProducts(false, controllerRef.current?.signal)}
                   className="text-sm text-blue-600 hover:underline"
                 >
                   Load more
@@ -745,13 +798,23 @@ export default function BulkPage() {
                             <div className="font-medium text-sm text-gray-900 truncate">{row.title}</div>
                             <div className="text-xs text-gray-400">{row.productTypePt} · {row.productStylePt}</div>
                           </div>
-                          <button
-                            onClick={() => handleRegenerateContent(row.productId)}
-                            disabled={row.skip || row.regenerating || anyRegenerating || contentPhase === "saving" || contentPhase === "saved"}
-                            className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-40 transition-colors shrink-0"
-                          >
-                            {row.regenerating ? "Regenerating…" : "Regenerate"}
-                          </button>
+                          <div className="flex flex-col items-end gap-1">
+                            <button
+                              onClick={() => handleRegenerateContent(row.productId)}
+                              disabled={row.skip || row.regenerating || anyRegenerating || contentPhase === "saving" || contentPhase === "saved"}
+                              className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-40 transition-colors shrink-0"
+                            >
+                              {row.regenerating ? "Regenerating…" : "Regenerate"}
+                            </button>
+                            {row.regenerateError && (
+                              <p className="text-xs text-red-500 text-right max-w-[160px]">
+                                {row.regenerateError.message}
+                                {row.regenerateError.billingUrl && (
+                                  <a href={row.regenerateError.billingUrl} target="_blank" rel="noreferrer" className="underline ml-1 whitespace-nowrap">Add credits →</a>
+                                )}
+                              </p>
+                            )}
+                          </div>
                           <label className="flex items-center gap-1 text-xs text-gray-600 shrink-0 cursor-pointer">
                             <input
                               type="checkbox"

@@ -81,12 +81,25 @@ function timeSensitiveKey(ts: string | null): keyof DateRangeConfig | null {
   return null;
 }
 
+function productMatchesInterest(
+  entry: PerfectForEntry,
+  product: ProductContext,
+  interestKeywords: Record<string, string[]>
+): boolean {
+  const keywords = interestKeywords[entry.phrase];
+  if (!keywords || keywords.length === 0) return true;
+  const text = `${product.title} ${product.descriptionText}`.toLowerCase();
+  return keywords.some((k) => text.includes(k.toLowerCase()));
+}
+
 export function assignPerfectFor(
   product: ProductContext,
   library: PerfectForEntry[],
   dateConfig: DateRangeConfig,
   today: Date,
-  seed?: number
+  seed?: number,
+  seasonalOverrides?: SeasonalOverrides,
+  interestKeywords: Record<string, string[]> = {}
 ): AssignedPerfectFor {
   const rand = seed !== undefined ? seededRandom(seed) : Math.random.bind(Math);
   void rand;
@@ -94,6 +107,7 @@ export function assignPerfectFor(
   // Step 1: filter — seasonal entries always excluded (handled by theme at display time)
   const candidates = library.filter((entry) => {
     if (entry.timeSensitive) return false;
+    if (entry.filterByInterest && !productMatchesInterest(entry, product, interestKeywords)) return false;
     const typeMatch = entry.productType === "ALL" || entry.productType === product.productType;
     const styleMatch = entry.productStyle === "ALL" || product.productStyles.includes(entry.productStyle);
     return typeMatch && styleMatch;

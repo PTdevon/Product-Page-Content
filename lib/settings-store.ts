@@ -3,8 +3,19 @@ import type { AppSettings } from "./types";
 
 const METAOBJECT_TYPE = "pdp_app_settings";
 
+const DEFAULT_INTEREST_KEYWORDS: Record<string, string[]> = {
+  "Travel lovers":        ["travel", "traveller", "traveler", "holiday", "luggage", "passport", "suitcase", "explorer", "wanderlust", "abroad"],
+  "Craft Lovers":         ["craft", "knitting", "knit", "sewing", "sew", "crochet", "embroidery", "quilting", "needlework", "maker", "diy"],
+  "Foodies":              ["food", "cook", "cooking", "kitchen", "recipe", "baking", "baker", "chef", "gourmet", "culinary", "foodie"],
+  "Outdoor Types":        ["outdoor", "garden", "gardening", "hiking", "hike", "camping", "nature", "walking", "rambling", "adventure", "trail"],
+  "Outdoor entertaining": ["outdoor", "garden", "barbecue", "bbq", "picnic", "al fresco", "alfresco", "patio", "terrace", "entertaining"],
+  "Music Lovers":         ["music", "musician", "guitar", "piano", "violin", "vinyl", "concert", "singing", "band", "instrument", "melody", "song"],
+  "Sports Fans":          ["sport", "sports", "football", "rugby", "cricket", "tennis", "golf", "fitness", "gym", "athlete", "team", "match"],
+};
+
 const DEFAULT_SETTINGS: AppSettings = {
   dateRanges: { mothersDay: null, fathersDay: null, valentinesDay: null },
+  interestKeywords: DEFAULT_INTEREST_KEYWORDS,
 };
 
 const LIST_QUERY = `
@@ -34,17 +45,27 @@ const UPDATE_MUTATION = `
 `;
 
 function settingsToFields(s: AppSettings) {
-  return [{ key: "date_ranges", value: JSON.stringify(s.dateRanges) }];
+  return [
+    { key: "date_ranges", value: JSON.stringify(s.dateRanges) },
+    { key: "interest_keywords", value: JSON.stringify(s.interestKeywords) },
+  ];
 }
 
 function fieldsToSettings(fields: { key: string; value: string }[]): AppSettings {
   const drField = fields.find((f) => f.key === "date_ranges");
-  if (!drField) return DEFAULT_SETTINGS;
-  try {
-    return { dateRanges: JSON.parse(drField.value) };
-  } catch {
-    return DEFAULT_SETTINGS;
+  const ikField = fields.find((f) => f.key === "interest_keywords");
+
+  let dateRanges = DEFAULT_SETTINGS.dateRanges;
+  if (drField) {
+    try { dateRanges = JSON.parse(drField.value); } catch { /* use default */ }
   }
+
+  let interestKeywords = DEFAULT_INTEREST_KEYWORDS;
+  if (ikField) {
+    try { interestKeywords = JSON.parse(ikField.value); } catch { /* use default */ }
+  }
+
+  return { dateRanges, interestKeywords };
 }
 
 export async function getSettings(): Promise<AppSettings> {

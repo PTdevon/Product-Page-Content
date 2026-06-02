@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { shopifyGraphQL } from "@/lib/shopify";
+import { classifyStatus, contentStatus, matchesFilter } from "@/lib/product-filters";
 import type { ProductSummary } from "@/lib/types";
 
 const LIST_PRODUCTS = `
@@ -29,39 +30,8 @@ const LIST_PRODUCTS = `
   }
 `;
 
-type StatusValue = "complete" | "partial" | "missing";
 
-function classifyStatus(node: { productTypePt: { value: string } | null; productStylePt: { value: string } | null }): StatusValue {
-  const hasType  = !!node.productTypePt?.value;
-  const hasStyle = !!node.productStylePt?.value;
-  if (hasType && hasStyle) return "complete";
-  if (hasType || hasStyle)  return "partial";
-  return "missing";
-}
-
-function contentStatus(node: { productSummary: MF; wctBullet1: MF; pfBullet1: MF; seasonalMD: MF; seasonalFD: MF; seasonalVD: MF }): StatusValue {
-  const summary = node.productSummary?.value ?? "";
-  const wct = node.wctBullet1?.value ?? "";
-  const pf = node.pfBullet1?.value ?? "";
-  const seasonal = node.seasonalMD?.value === "true" || node.seasonalFD?.value === "true" || node.seasonalVD?.value === "true";
-  if (summary && wct && pf) return "complete";
-  if (summary || wct || pf || seasonal) return "partial";
-  return "missing";
-}
-
-function matchesFilter(filter: string, cs: StatusValue, contentSt: StatusValue): boolean {
-  if (!filter) return true;
-  if (filter === "needs-classify")    return cs !== "complete";
-  if (filter === "ready-to-populate") return cs === "complete" && contentSt !== "complete";
-  if (filter === "complete")          return cs === "complete" && contentSt === "complete";
-  // Legacy values used by the products page
-  if (filter === "missing")     return cs === "missing" && contentSt === "missing";
-  if (filter === "partial")     return (cs !== "missing" || contentSt !== "missing") && !(cs === "complete" && contentSt === "complete");
-  if (filter === "has-content")      return contentSt !== "missing";
-  if (filter === "content-partial")  return contentSt === "partial";
-  if (filter === "content-complete") return contentSt === "complete";
-  return true;
-}
+type MF = { value: string } | null;
 
 export async function GET(req: NextRequest) {
   const authError = await requireAuth(req);
@@ -79,11 +49,11 @@ export async function GET(req: NextRequest) {
 
   const queryParts: string[] = [];
   queryParts.push(`-tag:hidden`);
+  queryParts.push(`-tag:christmas`);
   if (search) queryParts.push(`title:*${search}*`);
   if (bestseller) queryParts.push(`tag:*bestseller*`);
   const query = queryParts.join(" AND ");
 
-  type MF = { value: string } | null;
   type RawEdge = {
     node: {
       id: string; title: string; handle: string; tags: string[];
@@ -108,6 +78,7 @@ export async function GET(req: NextRequest) {
   const MAX_ITERATIONS = statusFilter ? 10 : 1;
   let iterations = 0;
 
+  try {
   while (matched.length < PAGE_SIZE && hasMore && iterations < MAX_ITERATIONS) {
     iterations++;
     const data = await shopifyGraphQL<{
@@ -117,6 +88,7 @@ export async function GET(req: NextRequest) {
     for (const edge of data.products.edges) {
       if (matched.length >= PAGE_SIZE) break;
       if (edge.node.tags.includes("hidden")) continue;
+      if (edge.node.tags.some(t => t.toLowerCase() === "christmas")) continue;
       const cs        = classifyStatus(edge.node);
       const contentSt = contentStatus(edge.node);
       if (!statusFilter || matchesFilter(statusFilter, cs, contentSt)) {
@@ -140,6 +112,11 @@ export async function GET(req: NextRequest) {
     if (hasMore && data.products.edges.length > 0) {
       scanCursor = data.products.edges[data.products.edges.length - 1].cursor;
     }
+  }
+
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return NextResponse.json({ error: `Failed to fetch products: ${message}` }, { status: 502 });
   }
 
   const products = matched.map((e) => e.product);

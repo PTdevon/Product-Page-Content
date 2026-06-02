@@ -34,70 +34,93 @@ export default function BulkReviewPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveResult, setSaveResult] = useState<{ saved: number; failed: number } | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [bestseller, setBestseller] = useState(false);
-  const [contentFilter, setContentFilter] = useState("has-content");
+  const [contentFilter, setContentFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [seasonalFilter, setSeasonalFilter] = useState("");
   const [pageSize, setPageSize] = useState(25);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [totalCount, setTotalCount] = useState<number | null>(null);
   const cursorRef = useRef<string | null>(null);
+  const controllerRef = useRef<AbortController | null>(null);
 
-  const fetchTotalCount = useCallback(async () => {
+  const fetchTotalCount = useCallback(async (signal?: AbortSignal) => {
     setTotalCount(null);
     const params = new URLSearchParams({ status: contentFilter });
     if (search) params.set("search", search);
     if (bestseller) params.set("bestseller", "true");
-    const res = await fetch(`/api/products/count?${params}`);
-    if (res.ok) setTotalCount((await res.json()).count);
+    try {
+      const res = await fetch(`/api/products/count?${params}`, { signal });
+      if (!res.ok) return;
+      setTotalCount((await res.json()).count);
+    } catch { /* abort or network error — leave count as null (shows fallback) */ }
   }, [search, bestseller, contentFilter]);
 
-  const fetchPage = useCallback(async (reset: boolean) => {
+  const fetchPage = useCallback(async (reset: boolean, signal?: AbortSignal) => {
     setLoading(true);
+    if (reset) setFetchError(null);
     const params = new URLSearchParams({ status: contentFilter });
     if (search) params.set("search", search);
     if (bestseller) params.set("bestseller", "true");
     params.set("limit", String(pageSize));
     if (!reset && cursorRef.current) params.set("cursor", cursorRef.current);
 
-    const res = await fetch(`/api/products?${params}`);
-    if (!res.ok) { setLoading(false); return; }
-    const data: { products: ProductSummary[]; nextCursor: string | null } = await res.json();
-
-    if (data.products.length > 0) {
-      const contentRes = await fetch("/api/bulk-content-review", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productIds: data.products.map((p) => p.id) }),
-      });
-      const contentData: { rows: ContentRow[] } = contentRes.ok ? await contentRes.json() : { rows: [] };
-      contentData.rows.forEach((r) => {
-        if (!originalRows.current.has(r.productId)) {
-          originalRows.current.set(r.productId, { ...r });
-        }
-      });
-      if (reset) {
-        setRows(contentData.rows);
-      } else {
-        setRows((prev) => [...prev, ...contentData.rows]);
+    try {
+      const res = await fetch(`/api/products?${params}`, { signal });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        setFetchError(errData.error ?? "Failed to load products — please try refreshing.");
+        setLoading(false);
+        return;
       }
-    } else if (reset) {
-      setRows([]);
-    }
+      const data: { products: ProductSummary[]; nextCursor: string | null } = await res.json();
 
-    cursorRef.current = data.nextCursor;
-    setNextCursor(data.nextCursor);
-    setLoading(false);
+      if (data.products.length > 0) {
+        const contentRes = await fetch("/api/bulk-content-review", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ productIds: data.products.map((p) => p.id) }),
+          signal,
+        });
+        const contentData: { rows: ContentRow[] } = contentRes.ok ? await contentRes.json() : { rows: [] };
+        if (signal?.aborted) return;
+        contentData.rows.forEach((r) => {
+          if (!originalRows.current.has(r.productId)) {
+            originalRows.current.set(r.productId, { ...r });
+          }
+        });
+        if (reset) {
+          setRows(contentData.rows);
+        } else {
+          setRows((prev) => [...prev, ...contentData.rows]);
+        }
+      } else if (reset) {
+        setRows([]);
+      }
+
+      cursorRef.current = data.nextCursor;
+      setNextCursor(data.nextCursor);
+      setLoading(false);
+    } catch (err) {
+      if ((err as { name?: string })?.name !== "AbortError") {
+        setFetchError("Network error — please check your connection and try again.");
+      }
+      setLoading(false);
+    }
   }, [search, bestseller, contentFilter, pageSize]);
 
   useEffect(() => {
+    const controller = new AbortController();
+    controllerRef.current = controller;
     cursorRef.current = null;
     originalRows.current = new Map();
     setDirty(new Set());
     setSaveResult(null);
-    fetchPage(true);
-    fetchTotalCount();
+    fetchPage(true, controller.signal);
+    fetchTotalCount(controller.signal);
+    return () => controller.abort();
   }, [fetchPage, fetchTotalCount]);
 
   const filteredRows = rows.filter((r) => {
@@ -118,26 +141,32 @@ export default function BulkReviewPage() {
     const toSave = rows.filter((r) => dirty.has(r.productId));
     if (toSave.length === 0) return;
     setSaving(true);
-    const res = await fetch("/api/bulk-content-save", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        rows: toSave.map((r) => ({
-          productId: r.productId,
-          productTypePt: r.productTypePt,
-          productStylePt: r.productStylePt,
-          summary: r.summary,
-          wctBullets: r.wctBullets,
-          pfBullets: r.pfBullets,
-          pfIcons: r.pfIcons,
-          seasonalOverrides: r.seasonalOverrides,
-        })),
-      }),
-    });
-    const data = res.ok ? await res.json() : { saved: 0, failed: toSave.length };
-    setSaveResult(data);
-    setSaving(false);
-    if (data.failed === 0) setDirty(new Set());
+    setSaveResult(null);
+    try {
+      const res = await fetch("/api/bulk-content-save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rows: toSave.map((r) => ({
+            productId: r.productId,
+            productTypePt: r.productTypePt,
+            productStylePt: r.productStylePt,
+            summary: r.summary,
+            wctBullets: r.wctBullets,
+            pfBullets: r.pfBullets,
+            pfIcons: r.pfIcons,
+            seasonalOverrides: r.seasonalOverrides,
+          })),
+        }),
+      });
+      const data = res.ok ? await res.json() : { saved: 0, failed: toSave.length };
+      setSaveResult(data);
+      setDirty(new Set());
+    } catch {
+      setSaveResult({ saved: 0, failed: toSave.length });
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -166,7 +195,7 @@ export default function BulkReviewPage() {
           onChange={(e) => setContentFilter(e.target.value)}
           className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         >
-          <option value="has-content">All Content</option>
+          <option value="">All Products</option>
           <option value="content-partial">Partial Content</option>
           <option value="complete">Complete</option>
         </select>
@@ -217,7 +246,7 @@ export default function BulkReviewPage() {
             <button
               onClick={handleSave}
               disabled={saving}
-              className="px-4 py-1.5 bg-gray-900 text-white text-sm rounded hover:bg-gray-700 disabled:opacity-50"
+              className="px-4 py-1.5 bg-gray-900 text-white text-sm rounded hover:bg-gray-700 disabled:opacity-70"
             >
               {saving ? "Saving..." : `Save ${dirty.size} change${dirty.size !== 1 ? "s" : ""}`}
             </button>
@@ -228,6 +257,8 @@ export default function BulkReviewPage() {
       <div className="flex-1 overflow-y-auto">
         {loading && rows.length === 0 ? (
           <div className="p-8 text-center text-gray-400 text-sm">Loading...</div>
+        ) : !loading && fetchError ? (
+          <div className="p-8 text-center text-red-500 text-sm">{fetchError}</div>
         ) : !loading && filteredRows.length === 0 ? (
           <div className="p-8 text-center text-gray-400 text-sm">No products found.</div>
         ) : (
@@ -253,7 +284,7 @@ export default function BulkReviewPage() {
         {nextCursor && !loading && (
           <div className="p-4 text-center">
             <button
-              onClick={() => fetchPage(false)}
+              onClick={() => fetchPage(false, controllerRef.current?.signal)}
               className="px-4 py-2 border border-gray-300 rounded text-sm text-gray-600 hover:bg-gray-50"
             >
               Load more
@@ -280,8 +311,10 @@ function RowEditor({
   onChange: (patch: Partial<ContentRow>) => void;
   onRevert: () => void;
 }) {
+  const hasNoContent = !row.summary && row.wctBullets.every((b) => !b) && row.pfBullets.every((b) => !b);
+
   return (
-    <div className={`grid grid-cols-[10rem_13rem_7rem_4fr_7rem_3fr_2fr] gap-4 p-4 transition-colors ${isDirty ? "bg-amber-50" : "bg-white hover:bg-gray-50"}`}>
+    <div className={`grid grid-cols-[10rem_13rem_7rem_4fr_7rem_3fr_2fr] gap-4 p-4 transition-colors ${isDirty ? "bg-amber-50" : hasNoContent ? "bg-gray-100" : "bg-white hover:bg-gray-50"} ${hasNoContent ? "opacity-70" : ""}`}>
       {/* Col 1: Image + title */}
       <div>
         {row.imageUrl ? (
@@ -290,7 +323,8 @@ function RowEditor({
           <div className="w-20 aspect-square bg-gray-100 rounded mb-2" />
         )}
         <p className="text-xs font-medium text-gray-800 leading-snug">{row.title}</p>
-        {isDirty && (
+        {hasNoContent && <span className="text-xs text-gray-400 mt-1 block">No content</span>}
+        {!hasNoContent && isDirty && (
           <>
             <span className="text-xs text-amber-600 mt-1 block">Unsaved</span>
             <button onClick={onRevert} className="text-xs text-gray-400 hover:text-gray-600 underline mt-0.5 block">Revert changes</button>
@@ -348,7 +382,8 @@ function RowEditor({
           value={row.summary}
           onChange={(e) => onChange({ summary: e.target.value })}
           rows={6}
-          className="w-full px-3 py-2 border border-gray-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+          disabled={hasNoContent}
+          className="w-full px-3 py-2 border border-gray-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
         />
       </div>
 

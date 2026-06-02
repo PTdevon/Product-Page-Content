@@ -35,7 +35,7 @@ export async function GET(
     };
     const settings = await getSettings();
     const wct = assignWhyChooseThis(ctx, wctLibrary);
-    const pf = assignPerfectFor(ctx, pfLibrary, settings.dateRanges, new Date());
+    const pf = assignPerfectFor(ctx, pfLibrary, settings.dateRanges, new Date(), undefined, undefined, settings.interestKeywords);
     const wctCategories = ["Stands Out", "Gift Impact", "Trusted Pick", "Worth Keeping"];
     const wctSlotCounts = wctCategories.map(
       (category) => wctLibrary.filter(

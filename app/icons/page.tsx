@@ -99,7 +99,7 @@ export default function IconsPage() {
 
   return (
     <div className="flex flex-col min-h-screen">
-      <Nav active="icons" />
+      <Nav active="perfect-for" subActive="icons" />
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-4xl mx-auto px-6 py-8 space-y-10">
 

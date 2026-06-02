@@ -36,4 +36,5 @@ export interface AppSettings {
     fathersDay:    { start: string; end: string } | null;
     valentinesDay: { start: string; end: string } | null;
   };
+  interestKeywords: Record<string, string[]>;
 }

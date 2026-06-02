@@ -138,8 +138,12 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
   useEffect(() => {
     setSummaryOptions([]);
     setLoading(true);
+    setError("");
     fetch(`/api/products/${productId}`)
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`Failed to load product (${r.status})`);
+        return r.json();
+      })
       .then((d: ProductData) => {
         setData(d);
         setProductType(d.metafields.productTypePt);
@@ -166,6 +170,7 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
           ]);
         }
       })
+      .catch((err: Error) => setError(err.message ?? "Failed to load product"))
       .finally(() => setLoading(false));
   }, [productId]);
 
@@ -335,6 +340,10 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
 
   if (loading) {
     return <div className="p-8 text-gray-400 text-sm">Loading product…</div>;
+  }
+
+  if (!loading && error && !data) {
+    return <div className="p-8 text-red-500 text-sm">{error}</div>;
   }
 
   const validStyles = getValidStyles(productType);

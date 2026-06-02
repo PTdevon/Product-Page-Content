@@ -41,8 +41,14 @@ export async function POST(req: NextRequest) {
       let succeeded = 0;
       let skipped = 0;
       let failed = 0;
+      let fatalError: object | null = null;
 
       for (const productGid of productIds) {
+        if (fatalError) {
+          skipped++;
+          send({ type: "progress", productId: productGid, title: productGid, status: "skipped", message: "Stopped due to earlier error" });
+          continue;
+        }
         try {
           const { product, metafields } = await getProductWithMetafields(productGid);
 
@@ -77,7 +83,7 @@ export async function POST(req: NextRequest) {
           };
 
           const wct = assignWhyChooseThis(ctx, wctLibrary);
-          const pf = assignPerfectFor(ctx, pfLibrary, settings.dateRanges, today);
+          const pf = assignPerfectFor(ctx, pfLibrary, settings.dateRanges, today, undefined, undefined, settings.interestKeywords);
 
           const summaryResult = await generateProductSummary({
             title: product.title,
@@ -85,8 +91,20 @@ export async function POST(req: NextRequest) {
             productType: type,
             productStyle: styles.join(", "),
           });
-          const summaryText = "options" in summaryResult ? summaryResult.options[0] : undefined;
-          const summaryStatus = summaryText ? "generated" : "failed";
+
+          let summaryText: string | undefined;
+          let summaryStatus: string;
+          if ("error" in summaryResult) {
+            summaryText = undefined;
+            summaryStatus = "failed";
+            const isNonTransient = summaryResult.error.type === "credits_exhausted" || summaryResult.error.type === "invalid_key";
+            if (isNonTransient) {
+              fatalError = summaryResult.error;
+            }
+          } else {
+            summaryText = summaryResult.options[0];
+            summaryStatus = summaryText ? "generated" : "failed";
+          }
 
           await setProductMetafields(productGid, {
             productTypePt: type,
@@ -107,6 +125,9 @@ export async function POST(req: NextRequest) {
 
           succeeded++;
           send({ type: "progress", productId: productGid, title: product.title, status: "ok", summaryStatus });
+          if (fatalError) {
+            send({ type: "fatal-error", error: fatalError });
+          }
         } catch (err) {
           failed++;
           const message = err instanceof Error ? err.message : "Unknown error";
@@ -114,7 +135,7 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      send({ type: "done", total: productIds.length, succeeded, skipped, failed });
+      send({ type: "done", total: productIds.length, succeeded, skipped, failed, ...(fatalError ? { fatalError } : {}) });
       controller.close();
     },
   });

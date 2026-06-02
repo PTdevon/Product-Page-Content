@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
   const today = new Date();
 
   const wct = assignWhyChooseThis(ctx, wctLibrary);
-  const pf = assignPerfectFor(ctx, pfLibrary, settings.dateRanges, today);
+  const pf = assignPerfectFor(ctx, pfLibrary, settings.dateRanges, today, undefined, undefined, settings.interestKeywords);
 
   const summaryResult = await generateProductSummary({
     title: product.title,
@@ -49,7 +49,11 @@ export async function POST(req: NextRequest) {
     productStyle: styles.join(", "),
   });
 
-  const summary = "options" in summaryResult ? (summaryResult.options[0] ?? "") : "";
+  if ("error" in summaryResult) {
+    return NextResponse.json({ error: summaryResult.error }, { status: 422 });
+  }
+
+  const summary = summaryResult.options[0] ?? "";
 
   return NextResponse.json({
     summary,

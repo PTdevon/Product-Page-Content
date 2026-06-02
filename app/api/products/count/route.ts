@@ -26,6 +26,7 @@ const COUNT_PRODUCTS = `
 
 type MF = { value: string } | null;
 type RawNode = { tags: string[]; productTypePt: MF; productStylePt: MF; productSummary: MF; wctBullet1: MF; pfBullet1: MF; seasonalMD: MF; seasonalFD: MF; seasonalVD: MF };
+type CountResult = { products: { edges: { node: RawNode; cursor: string }[]; pageInfo: { hasNextPage: boolean } } };
 
 function classifyStatus(node: RawNode) {
   const hasType  = !!node.productTypePt?.value;
@@ -69,7 +70,7 @@ export async function GET(req: NextRequest) {
   const bestseller   = searchParams.get("bestseller") === "true";
   const statusFilter = status;
 
-  const queryParts = ["-tag:hidden"];
+  const queryParts = ["-tag:hidden", "-tag:christmas"];
   if (search) queryParts.push(`title:*${search}*`);
   if (bestseller) queryParts.push(`tag:*bestseller*`);
   const query = queryParts.join(" AND ");
@@ -80,25 +81,29 @@ export async function GET(req: NextRequest) {
   const MAX_ITERATIONS = 10;
   let iterations = 0;
 
-  while (hasMore && iterations < MAX_ITERATIONS) {
-    iterations++;
-    const data = await shopifyGraphQL<{
-      products: { edges: { node: RawNode; cursor: string }[]; pageInfo: { hasNextPage: boolean } };
-    }>(COUNT_PRODUCTS, { first: 250, after: cursor, query });
+  try {
+    while (hasMore && iterations < MAX_ITERATIONS) {
+      iterations++;
+      const data: CountResult = await shopifyGraphQL<CountResult>(COUNT_PRODUCTS, { first: 250, after: cursor, query });
 
-    for (const edge of data.products.edges) {
-      if (edge.node.tags.includes("hidden")) continue;
-      const cs        = classifyStatus(edge.node);
-      const contentSt = contentStatus(edge.node);
-      if (!statusFilter || matchesFilter(statusFilter, cs, contentSt)) {
-        count++;
+      for (const edge of data.products.edges) {
+        if (edge.node.tags.includes("hidden")) continue;
+        if (edge.node.tags.some((t: string) => t.toLowerCase() === "christmas")) continue;
+        const cs        = classifyStatus(edge.node);
+        const contentSt = contentStatus(edge.node);
+        if (!statusFilter || matchesFilter(statusFilter, cs, contentSt)) {
+          count++;
+        }
+      }
+
+      hasMore = data.products.pageInfo.hasNextPage;
+      if (hasMore && data.products.edges.length > 0) {
+        cursor = data.products.edges[data.products.edges.length - 1].cursor;
       }
     }
-
-    hasMore = data.products.pageInfo.hasNextPage;
-    if (hasMore && data.products.edges.length > 0) {
-      cursor = data.products.edges[data.products.edges.length - 1].cursor;
-    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return NextResponse.json({ error: `Failed to count products: ${message}` }, { status: 502 });
   }
 
   return NextResponse.json({ count });
