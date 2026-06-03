@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "PT PDP Content",
+  title: "PT Product Page Content",
   description: "Product page content management for Penelope Tom",
 };
 

@@ -3,8 +3,10 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import Image from "next/image";
 import Nav from "@/components/Nav";
+import SwapModal from "@/components/SwapModal";
 import type { ProductSummary } from "@/lib/types";
 import { PRODUCT_TAXONOMY } from "@/data/taxonomy";
+
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -18,6 +20,9 @@ interface ClassifyRow {
   existingStyle: string;
   selectedType: string;
   selectedStyles: string[];
+  source: "existing" | "generated";
+  dirty: boolean;
+  regenerating: boolean;
   skip: boolean;
   error?: string;
 }
@@ -35,11 +40,22 @@ interface ContentRow {
   wctBullets: [string, string, string, string];
   pfBullets:  [string, string, string, string];
   pfIcons:    [string, string, string, string];
+  source: "existing" | "generated" | "needs-classify";
+  dirty: boolean;
   skip: boolean;
   regenerating: boolean;
   regenerateError?: { message: string; billingUrl?: string };
 }
 
+
+const WCT_LABELS = ["Stands Out", "Gift Impact", "Trusted Pick", "Worth Keeping"];
+
+function parseBullet(val: string): { text: string; subtext: string } {
+  if (!val) return { text: "", subtext: "" };
+  const m = val.match(/^<strong>(.*?)<\/strong>\s*(.*)/s);
+  if (m) return { text: m[1], subtext: m[2] };
+  return { text: val, subtext: "" };
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -67,11 +83,12 @@ export default function BulkPage() {
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("needs-classify");
+  const [statusFilter, setStatusFilter] = useState("");
   const [bestseller, setBestseller] = useState(false);
   const [typeFilter, setTypeFilter] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [pageSize, setPageSize] = useState(25);
+  const [taxonomy, setTaxonomy] = useState<Record<string, string[]>>(PRODUCT_TAXONOMY);
   const cursorRef = useRef<string | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
   const fetchEpochRef = useRef(0);
@@ -80,6 +97,8 @@ export default function BulkPage() {
   const [contentRows, setContentRows] = useState<ContentRow[]>([]);
   const [contentPhase, setContentPhase] = useState<ContentPhase>("idle");
   const [contentSaveResult, setContentSaveResult] = useState<{ saved: number; failed: number } | null>(null);
+  const [wctEditing, setWctEditing] = useState<{ productId: string; slotIndex: number; text: string; subtext: string } | null>(null);
+  const [bulkSwapModal, setBulkSwapModal] = useState<{ productId: string; type: "why" | "perfect"; slotIndex: number } | null>(null);
 
   // Classify workflow state
   const [classifyRows, setClassifyRows] = useState<ClassifyRow[]>([]);
@@ -145,6 +164,10 @@ export default function BulkPage() {
   }, [search, statusFilter, bestseller, pageSize]);
 
   useEffect(() => {
+    fetch("/api/taxonomy").then((r) => r.ok ? r.json() : null).then((d) => { if (d?.taxonomy) setTaxonomy(d.taxonomy); }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
     const controller = new AbortController();
     controllerRef.current = controller;
     cursorRef.current = null;
@@ -185,17 +208,46 @@ export default function BulkPage() {
   // ── Classify workflow ────────────────────────────────────────────────────
 
   async function handleClassify() {
-    const ids = [...selectedIds];
-    if (ids.length === 0 || classifyPhase !== "idle") return;
+    if (selectedIds.size === 0 || classifyPhase !== "idle") return;
 
     setClassifyRows([]);
     setClassifyPhase("streaming");
     setClassifySaveResult(null);
 
+    // Split: products with existing classification show immediately, unclassified go to AI
+    const selectedProducts = products.filter((p) => selectedIds.has(p.id));
+    const hasExisting = selectedProducts.filter((p) => p.productTypePt);
+    const needsClassify = selectedProducts.filter((p) => !p.productTypePt);
+
+    if (hasExisting.length > 0) {
+      setClassifyRows(
+        hasExisting.map((p) => ({
+          productId: p.id,
+          title: p.title,
+          imageUrl: p.featuredImage,
+          suggestedType: p.productTypePt,
+          suggestedStyles: p.productStylePt ? p.productStylePt.split(",").map((s) => s.trim()).filter(Boolean) : [],
+          existingType: p.productTypePt,
+          existingStyle: p.productStylePt,
+          selectedType: p.productTypePt,
+          selectedStyles: p.productStylePt ? p.productStylePt.split(",").map((s) => s.trim()).filter(Boolean) : [],
+          source: "existing" as const,
+          dirty: false,
+          regenerating: false,
+          skip: false,
+        }))
+      );
+    }
+
+    if (needsClassify.length === 0) {
+      setClassifyPhase("review");
+      return;
+    }
+
     const res = await fetch("/api/bulk-classify", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ productIds: ids }),
+      body: JSON.stringify({ productIds: needsClassify.map((p) => p.id) }),
     });
 
     if (!res.ok || !res.body) { setClassifyPhase("review"); return; }
@@ -228,6 +280,9 @@ export default function BulkPage() {
                 existingStyle: event.existingStyle,
                 selectedType: event.suggestedType,
                 selectedStyles: event.suggestedStyles,
+                source: "generated" as const,
+                dirty: false,
+                regenerating: false,
                 skip: !!event.error,
                 error: event.error,
               },
@@ -246,14 +301,82 @@ export default function BulkPage() {
     setClassifyPhase("review");
   }
 
+  async function handleRegenerateExisting() {
+    const existingRows = classifyRows.filter((r) => r.source === "existing" && !r.skip && !r.regenerating);
+    if (existingRows.length === 0) return;
+
+    const productIds = existingRows.map((r) => r.productId);
+    setClassifyRows((rows) => rows.map((r) =>
+      productIds.includes(r.productId) ? { ...r, regenerating: true } : r
+    ));
+
+    try {
+      const res = await fetch("/api/bulk-classify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productIds }),
+      });
+
+      if (!res.ok || !res.body) {
+        setClassifyRows((rows) => rows.map((r) =>
+          productIds.includes(r.productId) ? { ...r, regenerating: false } : r
+        ));
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const event = JSON.parse(line.slice(6));
+            if (event.type === "result") {
+              setClassifyRows((rows) => rows.map((r) =>
+                r.productId !== event.productId ? r : event.error ? {
+                  ...r,
+                  regenerating: false,
+                  error: event.error,
+                } : {
+                  ...r,
+                  regenerating: false,
+                  suggestedType: event.suggestedType,
+                  suggestedStyles: event.suggestedStyles,
+                  selectedType: event.suggestedType,
+                  selectedStyles: event.suggestedStyles,
+                  source: "generated" as const,
+                  dirty: false,
+                  error: undefined,
+                }
+              ));
+            }
+          } catch { /* ignore */ }
+        }
+      }
+    } catch {
+      setClassifyRows((rows) => rows.map((r) =>
+        productIds.includes(r.productId) ? { ...r, regenerating: false } : r
+      ));
+    }
+  }
+
   function handleTypeChange(productId: string, newType: string) {
-    const validStyles = PRODUCT_TAXONOMY[newType] ?? [];
+    const validStyles = taxonomy[newType] ?? [];
     setClassifyRows((prev) =>
       prev.map((r) =>
         r.productId !== productId ? r : {
           ...r,
           selectedType: newType,
           selectedStyles: r.selectedStyles.filter((s) => validStyles.includes(s)),
+          dirty: true,
         }
       )
     );
@@ -266,7 +389,7 @@ export default function BulkPage() {
         const next = checked
           ? [...r.selectedStyles, style]
           : r.selectedStyles.filter((s) => s !== style);
-        return { ...r, selectedStyles: next };
+        return { ...r, selectedStyles: next, dirty: true };
       })
     );
   }
@@ -279,7 +402,7 @@ export default function BulkPage() {
     if (classifyPhase !== "review") return;
 
     const assignments = classifyRows
-      .filter((r) => !r.skip && !r.error && r.selectedType && r.selectedStyles.length > 0)
+      .filter((r) => !r.skip && !r.error && r.selectedType && r.selectedStyles.length > 0 && (r.source === "generated" || r.dirty))
       .map((r) => ({ productId: r.productId, type: r.selectedType, styles: r.selectedStyles }));
 
     if (assignments.length === 0) return;
@@ -316,10 +439,46 @@ export default function BulkPage() {
   }
 
   const approvedCount = classifyRows.filter(
-    (r) => !r.skip && !r.error && r.selectedType && r.selectedStyles.length > 0
+    (r) => !r.skip && !r.error && r.selectedType && r.selectedStyles.length > 0 && (r.source === "generated" || r.dirty)
   ).length;
 
   // ── Content review workflow ───────────────────────────────────────────────
+
+  function handleWctEditSave() {
+    if (!wctEditing) return;
+    const { productId, slotIndex, text, subtext } = wctEditing;
+    const bullet = subtext ? `<strong>${text}</strong> ${subtext}` : `<strong>${text}</strong>`;
+    setContentRows((rows) => rows.map((r) => {
+      if (r.productId !== productId) return r;
+      const next = [...r.wctBullets] as [string, string, string, string];
+      next[slotIndex] = bullet;
+      return { ...r, wctBullets: next, dirty: true };
+    }));
+    setWctEditing(null);
+  }
+
+  function handleBulkSwapSelect(phrase: string, icon: string, text?: string, subtext?: string) {
+    if (!bulkSwapModal) return;
+    const { productId, type, slotIndex } = bulkSwapModal;
+    setContentRows((rows) => rows.map((r) => {
+      if (r.productId !== productId) return r;
+      if (type === "why") {
+        const bullet = text !== undefined
+          ? (subtext ? `<strong>${text}</strong> ${subtext}` : `<strong>${text}</strong>`)
+          : phrase;
+        const next = [...r.wctBullets] as [string, string, string, string];
+        next[slotIndex] = bullet;
+        return { ...r, wctBullets: next, dirty: true };
+      } else {
+        const nextPhrases = [...r.pfBullets] as [string, string, string, string];
+        const nextIcons   = [...r.pfIcons]   as [string, string, string, string];
+        nextPhrases[slotIndex] = phrase;
+        nextIcons[slotIndex]   = icon;
+        return { ...r, pfBullets: nextPhrases, pfIcons: nextIcons, dirty: true };
+      }
+    }));
+    setBulkSwapModal(null);
+  }
 
   async function handleSetContent() {
     const ids = selectedWithTypeStyle.map((p) => p.id);
@@ -337,11 +496,17 @@ export default function BulkPage() {
 
     if (!res.ok) { setContentPhase("idle"); return; }
 
-    const data = await res.json();
-    const rows: ContentRow[] = (data.rows as ContentRow[]).map((r) => ({
-      ...r,
-      skip: false,
-    }));
+    const text = await res.text();
+    let data: { rows: ContentRow[] };
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      console.error("Bulk content review — raw response:", text.slice(0, 1000));
+      console.error("Parse error:", e);
+      setContentPhase("idle");
+      return;
+    }
+    const rows: ContentRow[] = (data.rows ?? []).map((r) => ({ ...r, dirty: false }));
     setContentRows(rows);
     setContentPhase("review");
   }
@@ -360,7 +525,7 @@ export default function BulkPage() {
         const data = await res.json();
         setContentRows((rows) => rows.map((r) =>
           r.productId === productId
-            ? { ...r, regenerating: false, summary: data.summary, wctBullets: data.wctBullets, pfBullets: data.pfBullets, pfIcons: data.pfIcons }
+            ? { ...r, regenerating: false, summary: data.summary, wctBullets: data.wctBullets, pfBullets: data.pfBullets, pfIcons: data.pfIcons, source: "generated" as const, dirty: true }
             : r
         ));
       } else {
@@ -381,7 +546,7 @@ export default function BulkPage() {
   }
 
   async function handleSaveContent() {
-    const toSave = contentRows.filter((r) => !r.skip);
+    const toSave = contentRows.filter((r) => !r.skip && (r.source === "generated" || (r.source === "existing" && r.dirty)));
     if (toSave.length === 0 || contentPhase !== "review") return;
 
     setContentPhase("saving");
@@ -397,6 +562,8 @@ export default function BulkPage() {
             wctBullets: r.wctBullets,
             pfBullets: r.pfBullets,
             pfIcons: r.pfIcons,
+            productTypePt: r.productTypePt,
+            productStylePt: r.productStylePt,
           })),
         }),
       });
@@ -465,8 +632,8 @@ export default function BulkPage() {
           className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         >
           <option value="">All products</option>
-          <option value="needs-classify">No Type and Style Set</option>
-          <option value="ready-to-populate">No Content Set</option>
+          <option value="missing">No Content</option>
+          <option value="partial">Partial Content</option>
           <option value="complete">Complete</option>
         </select>
         <select
@@ -475,7 +642,7 @@ export default function BulkPage() {
           className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         >
           <option value="">All types</option>
-          {Object.keys(PRODUCT_TAXONOMY).map((t) => (
+          {Object.keys(taxonomy).map((t) => (
             <option key={t} value={t}>{t}</option>
           ))}
         </select>
@@ -526,8 +693,8 @@ export default function BulkPage() {
                   <th className="px-4 py-2.5 text-left font-medium text-gray-600 text-xs uppercase tracking-wide">Product</th>
                   <th className="px-4 py-2.5 text-left font-medium text-gray-600 text-xs uppercase tracking-wide">Type</th>
                   <th className="px-4 py-2.5 text-left font-medium text-gray-600 text-xs uppercase tracking-wide">Style</th>
-                  <th className="px-4 py-2.5 text-left font-medium text-gray-600 text-xs uppercase tracking-wide">Step 1</th>
-                  <th className="px-4 py-2.5 text-left font-medium text-gray-600 text-xs uppercase tracking-wide">Step 2</th>
+                  {!showRightPanel && <th className="px-4 py-2.5 text-left font-medium text-gray-600 text-xs uppercase tracking-wide">Step 1</th>}
+                  {!showRightPanel && <th className="px-4 py-2.5 text-left font-medium text-gray-600 text-xs uppercase tracking-wide">Step 2</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -553,27 +720,23 @@ export default function BulkPage() {
                     <td className="px-4 py-2.5 text-gray-500 text-xs">
                       {p.productStylePt || <span className="text-red-400">—</span>}
                     </td>
-                    <td className="px-4 py-2.5">
-                      <ClassifyBadge status={p.classifyStatus} />
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <ContentBadge status={p.contentStatus} />
-                    </td>
+                    {!showRightPanel && <td className="px-4 py-2.5"><ClassifyBadge status={p.classifyStatus} /></td>}
+                    {!showRightPanel && <td className="px-4 py-2.5"><ContentBadge status={p.contentStatus} /></td>}
                   </tr>
                 ))}
                 {loading && (
                   <tr>
-                    <td colSpan={6} className="px-4 py-10 text-center text-gray-400 text-sm">Loading…</td>
+                    <td colSpan={showRightPanel ? 4 : 6} className="px-4 py-10 text-center text-gray-400 text-sm">Loading…</td>
                   </tr>
                 )}
                 {!loading && fetchError && (
                   <tr>
-                    <td colSpan={6} className="px-4 py-10 text-center text-red-500 text-sm">{fetchError}</td>
+                    <td colSpan={showRightPanel ? 4 : 6} className="px-4 py-10 text-center text-red-500 text-sm">{fetchError}</td>
                   </tr>
                 )}
                 {!loading && !fetchError && filteredProducts.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-4 py-10 text-center text-gray-400 text-sm">No products found</td>
+                    <td colSpan={showRightPanel ? 4 : 6} className="px-4 py-10 text-center text-gray-400 text-sm">No products found</td>
                   </tr>
                 )}
               </tbody>
@@ -627,11 +790,22 @@ export default function BulkPage() {
                     {classifyPhase === "saving" && "Saving…"}
                     {classifyPhase === "saved" && "Saved"}
                   </span>
-                  {classifySaveResult && (
-                    <span className="text-xs text-gray-500">
-                      {classifySaveResult.saved} saved · {classifySaveResult.failed} failed
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {classifySaveResult && (
+                      <span className="text-xs text-gray-500">
+                        {classifySaveResult.saved} saved · {classifySaveResult.failed} failed
+                      </span>
+                    )}
+                    {classifyPhase === "review" && classifyRows.some((r) => r.source === "existing" && !r.skip) && (
+                      <button
+                        onClick={handleRegenerateExisting}
+                        disabled={classifyRows.some((r) => r.regenerating)}
+                        className="px-3 py-1.5 text-xs border border-gray-300 text-gray-600 rounded hover:bg-gray-50 disabled:opacity-40 transition-colors"
+                      >
+                        {classifyRows.some((r) => r.regenerating) ? "Regenerating…" : "Regenerate all Existing"}
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <div ref={classifyPanelRef} className="flex-1 overflow-y-auto">
@@ -648,7 +822,7 @@ export default function BulkPage() {
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                       {classifyRows.map((row) => (
-                        <tr key={row.productId} className={`${row.skip ? "opacity-40" : ""} align-top`}>
+                        <tr key={row.productId} className={`${row.skip || row.regenerating ? "opacity-40" : ""} align-top`}>
                           {/* Thumbnail */}
                           <td className="px-3 py-2">
                             {row.imageUrl ? (
@@ -673,8 +847,17 @@ export default function BulkPage() {
                           {/* Title */}
                           <td className="px-3 py-2 text-gray-900 max-w-[120px]">
                             <span className="line-clamp-2 leading-tight">{row.title}</span>
-                            {row.error && (
+                            {row.error ? (
                               <span className="text-red-500 block mt-0.5">{row.error}</span>
+                            ) : row.source === "existing" && !row.dirty ? (
+                              <span className="mt-0.5 inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-700">Existing</span>
+                            ) : row.source === "existing" && row.dirty ? (
+                              <span className="mt-0.5 inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-orange-100 text-orange-600">Edited - Unsaved</span>
+                            ) : (
+                              <span className="mt-0.5 inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-600">Newly Generated - Unsaved</span>
+                            )}
+                            {row.regenerating && (
+                              <span className="mt-0.5 inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-500">Regenerating…</span>
                             )}
                           </td>
                           {/* Existing */}
@@ -694,7 +877,7 @@ export default function BulkPage() {
                                 className="w-full border border-gray-300 rounded px-1.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-400"
                               >
                                 <option value="">— choose —</option>
-                                {Object.keys(PRODUCT_TAXONOMY).map((t) => (
+                                {Object.keys(taxonomy).map((t) => (
                                   <option key={t} value={t}>{t}</option>
                                 ))}
                               </select>
@@ -704,7 +887,7 @@ export default function BulkPage() {
                           <td className="px-3 py-2">
                             {row.error || !row.selectedType ? null : (
                               <div className="flex flex-col gap-0.5">
-                                {(PRODUCT_TAXONOMY[row.selectedType] ?? []).map((style) => (
+                                {(taxonomy[row.selectedType] ?? []).map((style) => (
                                   <label key={style} className="flex items-center gap-1 cursor-pointer">
                                     <input
                                       type="checkbox"
@@ -763,7 +946,8 @@ export default function BulkPage() {
 
             {/* ── Content review panel ── */}
             {showContent && (() => {
-              const saveCount = contentRows.filter((r) => !r.skip).length;
+              const needsSave = (r: ContentRow) => !r.skip && (r.source === "generated" || (r.source === "existing" && r.dirty));
+              const saveCount = contentRows.filter(needsSave).length;
               const anyRegenerating = contentRows.some((r) => r.regenerating);
               return (
                 <>
@@ -783,7 +967,7 @@ export default function BulkPage() {
 
                   <div className="flex-1 overflow-y-auto p-4 space-y-4">
                     {contentPhase === "loading" && (
-                      <div className="text-center text-gray-400 text-sm py-8">Loading…</div>
+                      <div className="text-center text-gray-400 text-sm py-8">Loading content — generating for products without existing content…</div>
                     )}
                     {contentRows.map((row) => (
                       <div key={row.productId} className={`bg-white rounded-lg border border-gray-200 ${row.skip ? "opacity-40" : ""}`}>
@@ -795,14 +979,24 @@ export default function BulkPage() {
                             <div className="w-10 h-10 bg-gray-100 rounded shrink-0" />
                           )}
                           <div className="flex-1 min-w-0">
-                            <div className="font-medium text-sm text-gray-900 truncate">{row.title}</div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-sm text-gray-900 truncate">{row.title}</span>
+                              {row.source === "needs-classify"
+                                ? <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-600">Needs Type &amp; Style</span>
+                                : row.source === "existing" && !row.dirty
+                                  ? <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-700">Existing</span>
+                                  : row.source === "existing" && row.dirty
+                                    ? <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium bg-orange-100 text-orange-600">Edited - Unsaved</span>
+                                    : <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-600">Newly Generated - Unsaved</span>
+                              }
+                            </div>
                             <div className="text-xs text-gray-400">{row.productTypePt} · {row.productStylePt}</div>
                           </div>
                           <div className="flex flex-col items-end gap-1">
                             <button
                               onClick={() => handleRegenerateContent(row.productId)}
                               disabled={row.skip || row.regenerating || anyRegenerating || contentPhase === "saving" || contentPhase === "saved"}
-                              className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-40 transition-colors shrink-0"
+                              className="px-2 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-40 transition-colors shrink-0"
                             >
                               {row.regenerating ? "Regenerating…" : "Regenerate"}
                             </button>
@@ -815,12 +1009,12 @@ export default function BulkPage() {
                               </p>
                             )}
                           </div>
-                          <label className="flex items-center gap-1 text-xs text-gray-600 shrink-0 cursor-pointer">
+                          <label className="flex items-center gap-1 text-sm text-gray-600 shrink-0 cursor-pointer">
                             <input
                               type="checkbox"
                               checked={row.skip}
                               onChange={(e) => setContentRows((rows) => rows.map((r) => r.productId === row.productId ? { ...r, skip: e.target.checked } : r))}
-                              disabled={contentPhase === "saving" || contentPhase === "saved"}
+                              disabled={row.source === "needs-classify" || contentPhase === "saving" || contentPhase === "saved"}
                               className="rounded border-gray-300"
                             />
                             Skip
@@ -833,52 +1027,105 @@ export default function BulkPage() {
                             <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Summary</label>
                             <textarea
                               value={row.summary}
-                              onChange={(e) => setContentRows((rows) => rows.map((r) => r.productId === row.productId ? { ...r, summary: e.target.value } : r))}
+                              onChange={(e) => setContentRows((rows) => rows.map((r) => r.productId === row.productId ? { ...r, summary: e.target.value, dirty: true } : r))}
                               disabled={row.skip || row.regenerating || contentPhase === "saving" || contentPhase === "saved"}
                               rows={3}
-                              className="w-full text-xs border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-400 resize-none"
+                              className="w-full text-sm border border-gray-300 rounded px-2 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-400 resize-none"
                             />
                           </div>
 
                           <div>
-                            <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Why Choose This</label>
-                            <div className="space-y-1">
-                              {row.wctBullets.map((bullet, i) => (
-                                <input
-                                  key={i}
-                                  type="text"
-                                  value={bullet}
-                                  onChange={(e) => {
-                                    const next = [...row.wctBullets] as [string, string, string, string];
-                                    next[i] = e.target.value;
-                                    setContentRows((rows) => rows.map((r) => r.productId === row.productId ? { ...r, wctBullets: next } : r));
-                                  }}
-                                  disabled={row.skip || row.regenerating || contentPhase === "saving" || contentPhase === "saved"}
-                                  placeholder={`Bullet ${i + 1}`}
-                                  className="w-full text-xs border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-400"
-                                />
-                              ))}
+                            <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-2">Why Choose This</label>
+                            <div className="space-y-1.5">
+                              {row.wctBullets.map((bullet, i) => {
+                                const parsed = parseBullet(bullet);
+                                const isEditing = wctEditing?.productId === row.productId && wctEditing?.slotIndex === i;
+                                const disabled = row.skip || row.regenerating || contentPhase === "saving" || contentPhase === "saved";
+                                return (
+                                  <div key={i} className="bg-white border border-gray-200 rounded-md px-2.5 py-2">
+                                    {isEditing ? (
+                                      <div className="space-y-1.5">
+                                        <span className="text-xs font-semibold uppercase tracking-wide text-gray-400 block mb-1">{WCT_LABELS[i]}</span>
+                                        <input
+                                          autoFocus
+                                          type="text"
+                                          value={wctEditing.text}
+                                          onChange={(e) => setWctEditing({ ...wctEditing, text: e.target.value })}
+                                          placeholder="Bold headline"
+                                          className="w-full text-sm border border-gray-200 rounded px-2 py-2 bg-gray-50 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                        />
+                                        <input
+                                          type="text"
+                                          value={wctEditing.subtext}
+                                          onChange={(e) => setWctEditing({ ...wctEditing, subtext: e.target.value })}
+                                          placeholder="Supporting subtext"
+                                          className="w-full text-sm border border-gray-200 rounded px-2 py-2 bg-gray-50 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                        />
+                                        <div className="flex gap-2">
+                                          <button onClick={handleWctEditSave} className="px-2.5 py-1 bg-gray-800 text-white text-xs rounded hover:bg-gray-900 transition-colors">Done</button>
+                                          <button onClick={() => setWctEditing(null)} className="px-2.5 py-1 text-xs text-gray-500 hover:text-gray-700 transition-colors">Cancel</button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-xs font-semibold uppercase tracking-wide text-gray-400 shrink-0 w-28">{WCT_LABELS[i]}</span>
+                                        <button
+                                          disabled={disabled}
+                                          onClick={() => setWctEditing({ productId: row.productId, slotIndex: i, text: parsed.text, subtext: parsed.subtext })}
+                                          className="flex-1 text-left text-sm text-gray-700 hover:text-gray-900 disabled:cursor-default transition-colors min-w-0"
+                                        >
+                                          {parsed.text
+                                            ? <><strong className="text-gray-900">{parsed.text}</strong>{parsed.subtext ? <span className="text-gray-500"> {parsed.subtext}</span> : ""}</>
+                                            : <em className="text-gray-400 not-italic">Empty — click to type or use Swap</em>
+                                          }
+                                        </button>
+                                        {!disabled && (
+                                          <button
+                                            onClick={() => setBulkSwapModal({ productId: row.productId, type: "why", slotIndex: i })}
+                                            className="shrink-0 text-[10px] text-gray-400 hover:text-gray-700 border border-gray-200 hover:border-gray-300 px-2 py-0.5 rounded transition-colors"
+                                          >
+                                            Swap
+                                          </button>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
                             </div>
                           </div>
 
                           <div>
-                            <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Perfect For</label>
-                            <div className="space-y-1">
-                              {row.pfBullets.map((bullet, i) => (
-                                <input
-                                  key={i}
-                                  type="text"
-                                  value={bullet}
-                                  onChange={(e) => {
-                                    const next = [...row.pfBullets] as [string, string, string, string];
-                                    next[i] = e.target.value;
-                                    setContentRows((rows) => rows.map((r) => r.productId === row.productId ? { ...r, pfBullets: next } : r));
-                                  }}
-                                  disabled={row.skip || row.regenerating || contentPhase === "saving" || contentPhase === "saved"}
-                                  placeholder={`Bullet ${i + 1}`}
-                                  className="w-full text-xs border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-400"
-                                />
-                              ))}
+                            <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-2">Perfect For</label>
+                            <div className="space-y-1.5">
+                              {row.pfBullets.map((phrase, i) => {
+                                const icon = row.pfIcons[i];
+                                const disabled = row.skip || row.regenerating || contentPhase === "saving" || contentPhase === "saved";
+                                return (
+                                  <div key={i} className="bg-white border border-gray-200 rounded-md px-2.5 py-2 flex items-center gap-2">
+                                    <span className="shrink-0 w-6 h-6 flex items-center justify-center">
+                                      {!icon ? (
+                                        <span className="text-gray-300 text-xs">—</span>
+                                      ) : icon.startsWith("<svg") ? (
+                                        <span className="w-5 h-5 opacity-60 [&>svg]:w-5 [&>svg]:h-5" dangerouslySetInnerHTML={{ __html: icon }} />
+                                      ) : (
+                                        <img src={icon.startsWith("https://") ? icon : `/icons/${icon}.svg`} alt="" className="w-5 h-5 opacity-60" />
+                                      )}
+                                    </span>
+                                    <span className="flex-1 text-sm text-gray-700 truncate">
+                                      {phrase || <em className="text-gray-400 not-italic">Empty</em>}
+                                    </span>
+                                    {!disabled && (
+                                      <button
+                                        onClick={() => setBulkSwapModal({ productId: row.productId, type: "perfect", slotIndex: i })}
+                                        className="shrink-0 text-[10px] text-gray-400 hover:text-gray-700 border border-gray-200 hover:border-gray-300 px-2 py-0.5 rounded transition-colors"
+                                      >
+                                        Swap
+                                      </button>
+                                    )}
+                                  </div>
+                                );
+                              })}
                             </div>
                           </div>
                         </div>
@@ -911,6 +1158,23 @@ export default function BulkPage() {
           </div>
         )}
       </div>
+
+      {/* Bulk content swap modal */}
+      {bulkSwapModal && (() => {
+        const row = contentRows.find((r) => r.productId === bulkSwapModal.productId);
+        if (!row) return null;
+        return (
+          <SwapModal
+            type={bulkSwapModal.type}
+            slotIndex={bulkSwapModal.slotIndex}
+            slotLabel={bulkSwapModal.type === "why" ? WCT_LABELS[bulkSwapModal.slotIndex] : undefined}
+            productType={row.productTypePt}
+            productStyles={row.productStylePt ? row.productStylePt.split(",").map((s) => s.trim()).filter(Boolean) : []}
+            onSelect={handleBulkSwapSelect}
+            onClose={() => setBulkSwapModal(null)}
+          />
+        );
+      })()}
 
       {/* Image modal */}
       {modalImage && (

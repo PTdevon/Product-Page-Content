@@ -9,7 +9,6 @@ import type { WCTEdit, PFEdit } from "@/lib/library-edits-store";
 
 const WCT_CATEGORIES = ["Stands Out", "Gift Impact", "Trusted Pick", "Worth Keeping"] as const;
 const PF_CATEGORIES  = ["Occasion", "Person", "Context"] as const;
-const ALL_TYPES = Object.keys(PRODUCT_TAXONOMY);
 
 type WCTRow = WhyChooseThisEntry & { _edit: WCTEdit | null };
 type PFRow  = PerfectForEntry  & { _edit: PFEdit  | null };
@@ -36,9 +35,10 @@ interface EditModalProps {
   entry: WCTRow | PFRow | null; // null = new entry
   onClose: () => void;
   onSaved: (patch?: SavedPatch) => void;
+  taxonomy: Record<string, string[]>;
 }
 
-function EditModal({ tab, entry, onClose, onSaved }: EditModalProps) {
+function EditModal({ tab, entry, onClose, onSaved, taxonomy }: EditModalProps) {
   const isNew = !entry;
 
   // WCT fields
@@ -46,7 +46,8 @@ function EditModal({ tab, entry, onClose, onSaved }: EditModalProps) {
   const [subtext, setSubtext] = useState((entry as WCTRow)?.subtext ?? "");
 
   // PF fields
-  const [phrase, setPhrase]   = useState((entry as PFRow)?.phrase ?? "");
+  const [phrase, setPhrase]         = useState((entry as PFRow)?.phrase ?? "");
+  const [timeSensitive, setTimeSensitive] = useState<string | null>((entry as PFRow)?.timeSensitive ?? null);
 
   // Shared for new entries
   const [productType, setProductType] = useState(entry?.productType ?? "");
@@ -57,7 +58,7 @@ function EditModal({ tab, entry, onClose, onSaved }: EditModalProps) {
   const [typeStylePairs, setTypeStylePairs] = useState<{ type: string; style: string }[]>([]);
   const [addingType, setAddingType] = useState("");
   const [addingStyle, setAddingStyle] = useState("");
-  const addingStyles = addingType ? (PRODUCT_TAXONOMY[addingType] ?? []) : [];
+  const addingStyles = addingType ? (taxonomy[addingType] ?? []) : [];
 
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
@@ -70,7 +71,7 @@ function EditModal({ tab, entry, onClose, onSaved }: EditModalProps) {
   const logRef = useRef<HTMLDivElement>(null);
   const updatingRef = useRef(false);
 
-  const availableStyles = productType ? (PRODUCT_TAXONOMY[productType] ?? []) : [];
+  const availableStyles = productType ? (taxonomy[productType] ?? []) : [];
 
   const [justSaved, setJustSaved] = useState(false);
   const [savedConfirm, setSavedConfirm] = useState(false);
@@ -91,7 +92,7 @@ function EditModal({ tab, entry, onClose, onSaved }: EditModalProps) {
         const res = await fetch("/api/library/entry", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type: "pf", entry: { productType: pair.type, productStyle: pair.style || "ALL", category, phrase: phrase.trim(), icon: "", timeSensitive: null, filterByInterest: false, applicabilityCount: 0, searchPhrase: "" } }),
+          body: JSON.stringify({ type: "pf", entry: { productType: pair.type, productStyle: pair.style || "ALL", category, phrase: phrase.trim(), icon: "", timeSensitive: timeSensitive, filterByInterest: false, applicabilityCount: 0, searchPhrase: "" } }),
         });
         if (!res.ok) {
           if (created > 0) { setTypeStylePairs((prev) => prev.slice(created)); onSaved(); }
@@ -128,7 +129,7 @@ function EditModal({ tab, entry, onClose, onSaved }: EditModalProps) {
             category: entry!.category,
             phrase,
             icon: (entry as PFRow)?.icon ?? "",
-            timeSensitive: (entry as PFRow)?.timeSensitive ?? null,
+            timeSensitive: timeSensitive,
             filterByInterest: (entry as PFRow)?.filterByInterest ?? false,
             applicabilityCount: (entry as PFRow)?.applicabilityCount ?? 0,
             searchPhrase: (entry as PFRow)?._edit?.searchPhrase ?? "",
@@ -142,7 +143,11 @@ function EditModal({ tab, entry, onClose, onSaved }: EditModalProps) {
     });
 
     setSaving(false);
-    if (!res.ok) { setSaveError("Save failed — please try again"); return; }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      setSaveError(err.error ?? "Save failed — please try again");
+      return;
+    }
     if (!isNew) {
       const patch: SavedPatch = tab === "why"
         ? { id: entry!.id, text, subtext }
@@ -251,7 +256,7 @@ function EditModal({ tab, entry, onClose, onSaved }: EditModalProps) {
                 <select value={productType} onChange={(e) => { setProductType(e.target.value); setProductStyle(""); }}
                   className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                   <option value="">Select type…</option>
-                  {ALL_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                  {Object.keys(taxonomy).map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
               <div>
@@ -290,6 +295,16 @@ function EditModal({ tab, entry, onClose, onSaved }: EditModalProps) {
                 </select>
               </div>
               <div>
+                <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Seasonal Occasion</label>
+                <select value={timeSensitive ?? ""} onChange={(e) => setTimeSensitive(e.target.value || null)}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="">None</option>
+                  <option value="mothers-day">Mother&apos;s Day</option>
+                  <option value="fathers-day">Father&apos;s Day</option>
+                  <option value="valentines-day">Valentine&apos;s Day</option>
+                </select>
+              </div>
+              <div>
                 <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Product Types</label>
                 <div className="space-y-2">
                   {typeStylePairs.map((pair, i) => (
@@ -305,7 +320,7 @@ function EditModal({ tab, entry, onClose, onSaved }: EditModalProps) {
                     <select value={addingType} onChange={(e) => { setAddingType(e.target.value); setAddingStyle(""); }}
                       className="flex-1 border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                       <option value="">Add type…</option>
-                      {ALL_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                      {Object.keys(taxonomy).map((t) => <option key={t} value={t}>{t}</option>)}
                     </select>
                     {addingStyles.length > 0 && (
                       <select value={addingStyle} onChange={(e) => setAddingStyle(e.target.value)}
@@ -345,11 +360,25 @@ function EditModal({ tab, entry, onClose, onSaved }: EditModalProps) {
               )}
             </>
           ) : !isNew && (
-            <div>
-              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Phrase</label>
-              <input type="text" value={phrase} onChange={(e) => { setPhrase(e.target.value); setJustSaved(false); }}
-                className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            </div>
+            <>
+              <div>
+                <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Phrase</label>
+                <input type="text" value={phrase} onChange={(e) => { setPhrase(e.target.value); setJustSaved(false); }}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              {tab === "perfect" && (
+                <div>
+                  <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Seasonal Occasion</label>
+                  <select value={timeSensitive ?? ""} onChange={(e) => { setTimeSensitive(e.target.value || null); setJustSaved(false); }}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="">None</option>
+                    <option value="mothers-day">Mother&apos;s Day</option>
+                    <option value="fathers-day">Father&apos;s Day</option>
+                    <option value="valentines-day">Valentine&apos;s Day</option>
+                  </select>
+                </div>
+              )}
+            </>
           )}
 
           {saveError && <p className="text-red-600 text-xs">{saveError}</p>}
@@ -451,8 +480,9 @@ function LibraryPageInner() {
     setTab(searchParams.get("tab") === "perfect" ? "perfect" : "why");
   }, [searchParams]);
 
-  const [productType, setProductType] = useState("");
-  const [productStyle, setProductStyle] = useState("");
+  const [taxonomy, setTaxonomy] = useState<Record<string, string[]>>(PRODUCT_TAXONOMY);
+  const [productType, setProductType] = useState(searchParams.get("type") ?? "");
+  const [productStyle, setProductStyle] = useState(searchParams.get("style") ?? "");
   const [category, setCategory] = useState("");
   const [search, setSearch] = useState("");
 
@@ -463,7 +493,11 @@ function LibraryPageInner() {
   const [editTarget, setEditTarget] = useState<WCTRow | PFRow | null | undefined>(undefined); // undefined = closed
   const [addingNew, setAddingNew] = useState(false);
 
-  const availableStyles = productType ? (PRODUCT_TAXONOMY[productType] ?? []) : [];
+  useEffect(() => {
+    fetch("/api/taxonomy").then((r) => r.ok ? r.json() : null).then((d) => { if (d?.taxonomy) setTaxonomy(d.taxonomy); }).catch(() => {});
+  }, []);
+
+  const availableStyles = productType ? (taxonomy[productType] ?? []) : [];
 
   const fetchEntries = useCallback(async () => {
     setLoading(true);
@@ -510,7 +544,7 @@ function LibraryPageInner() {
         <select value={productType} onChange={(e) => setProductType(e.target.value)}
           className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
           <option value="">All types</option>
-          {ALL_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+          {Object.keys(taxonomy).map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
         <select value={productStyle} onChange={(e) => setProductStyle(e.target.value)} disabled={!productType}
           className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-40">
@@ -550,6 +584,7 @@ function LibraryPageInner() {
           entry={addingNew ? null : editTarget!}
           onClose={closeModal}
           onSaved={afterSave}
+          taxonomy={taxonomy}
         />
       )}
     </div>
@@ -589,7 +624,7 @@ function WctTable({ entries, loading, onEdit }: { entries: WCTRow[]; loading: bo
   );
 }
 
-type SortCol = "phrase" | "category" | "productType" | "productStyle" | "filterByInterest";
+type SortCol = "phrase" | "category" | "productType" | "productStyle" | "filterByInterest" | "timeSensitive";
 
 function PfTable({ entries, loading, onEdit }: { entries: PFRow[]; loading: boolean; onEdit: (e: PFRow) => void }) {
   const [sortCol, setSortCol] = useState<SortCol | null>(null);
@@ -607,8 +642,8 @@ function PfTable({ entries, loading, onEdit }: { entries: PFRow[]; loading: bool
           const bv = b.filterByInterest ? 1 : 0;
           return sortDir === "asc" ? av - bv : bv - av;
         }
-        const av = a[sortCol] ?? "";
-        const bv = b[sortCol] ?? "";
+        const av = (sortCol === "timeSensitive" ? a.timeSensitive : a[sortCol as Exclude<SortCol, "timeSensitive" | "filterByInterest">]) ?? "";
+        const bv = (sortCol === "timeSensitive" ? b.timeSensitive : b[sortCol as Exclude<SortCol, "timeSensitive" | "filterByInterest">]) ?? "";
         return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
       })
     : entries;
@@ -637,11 +672,19 @@ function PfTable({ entries, loading, onEdit }: { entries: PFRow[]; loading: bool
           <SortHeader col="productType" label="Type" />
           <SortHeader col="productStyle" label="Style" />
           <SortHeader col="filterByInterest" label="Interest" />
+          <th className="px-4 py-3 text-left font-medium text-gray-600 text-xs w-36">
+            <button onClick={() => toggleSort("timeSensitive")} className="flex items-center gap-1 hover:text-gray-900 transition-colors">
+              Seasonal
+              <span className={sortCol === "timeSensitive" ? "text-gray-900" : "text-gray-300"}>
+                {sortCol === "timeSensitive" && sortDir === "desc" ? "↓" : "↑"}
+              </span>
+            </button>
+          </th>
         </tr>
       </thead>
       <tbody className="divide-y divide-gray-100">
-        {loading && <tr><td colSpan={6} className="px-4 py-10 text-center text-gray-400">Loading…</td></tr>}
-        {!loading && sorted.length === 0 && <tr><td colSpan={6} className="px-4 py-10 text-center text-gray-400">No entries found</td></tr>}
+        {loading && <tr><td colSpan={7} className="px-4 py-10 text-center text-gray-400">Loading…</td></tr>}
+        {!loading && sorted.length === 0 && <tr><td colSpan={7} className="px-4 py-10 text-center text-gray-400">No entries found</td></tr>}
         {sorted.map((e) => (
           <tr key={e.id} onClick={() => onEdit(e)} className={`cursor-pointer hover:bg-gray-50 ${e._edit && !e._edit.isNew ? "bg-amber-50" : ""}`}>
             <td className="px-4 py-3"><IconImg icon={e.icon} size={20} /></td>
@@ -653,6 +696,11 @@ function PfTable({ entries, loading, onEdit }: { entries: PFRow[]; loading: bool
             <td className="px-4 py-3 text-gray-500">{e.productStyle}</td>
             <td className="px-4 py-3">
               {e.filterByInterest && <span className="px-2 py-0.5 rounded-full text-sm bg-green-50 text-green-700">Yes</span>}
+            </td>
+            <td className="px-4 py-3">
+              {e.timeSensitive === "mothers-day" && <span className="px-2 py-0.5 rounded-full text-xs bg-pink-50 text-pink-700">Mother&apos;s Day</span>}
+              {e.timeSensitive === "fathers-day" && <span className="px-2 py-0.5 rounded-full text-xs bg-blue-50 text-blue-700">Father&apos;s Day</span>}
+              {e.timeSensitive === "valentines-day" && <span className="px-2 py-0.5 rounded-full text-xs bg-red-50 text-red-700">Valentine&apos;s Day</span>}
             </td>
           </tr>
         ))}

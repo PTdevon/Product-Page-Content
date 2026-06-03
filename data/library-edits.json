@@ -1,0 +1,85 @@
+{
+  "wct": {
+    "wct-custom-1780483259235": {
+      "id": "wct-custom-1780483259235",
+      "productType": "Men's Jewellery & Accessories",
+      "productStyle": "Novelty",
+      "category": "Gift Impact",
+      "text": "Made with them in mind",
+      "subtext": "Thoughtful and personal",
+      "searchFormatted": "",
+      "isNew": true
+    },
+    "wct-custom-1780483281852": {
+      "id": "wct-custom-1780483281852",
+      "productType": "Men's Jewellery & Accessories",
+      "productStyle": "Novelty",
+      "category": "Stands Out",
+      "text": "A playful detail",
+      "subtext": "Full of personality",
+      "searchFormatted": "",
+      "isNew": true
+    },
+    "wct-custom-1780483302659": {
+      "id": "wct-custom-1780483302659",
+      "productType": "Men's Jewellery & Accessories",
+      "productStyle": "Novelty",
+      "category": "Trusted Pick",
+      "text": "A popular choice",
+      "subtext": "Always well received",
+      "searchFormatted": "",
+      "isNew": true
+    },
+    "wct-custom-1780483393105": {
+      "id": "wct-custom-1780483393105",
+      "productType": "Men's Jewellery & Accessories",
+      "productStyle": "Novelty",
+      "category": "Worth Keeping",
+      "text": "Made to be worn again",
+      "subtext": "A gift they'll remember",
+      "searchFormatted": "",
+      "isNew": true
+    }
+  },
+  "pf": {
+    "pf-119": {
+      "id": "pf-119",
+      "productType": "Men's Jewellery & Accessories",
+      "productStyle": "ALL",
+      "category": "Occasion",
+      "phrase": "Valentine's Day",
+      "icon": "heart",
+      "timeSensitive": "valentines-day",
+      "filterByInterest": false,
+      "applicabilityCount": 3,
+      "searchPhrase": "Valentines Day",
+      "isNew": false
+    },
+    "pf-134": {
+      "id": "pf-134",
+      "productType": "Personalised accessories",
+      "productStyle": "ALL",
+      "category": "Occasion",
+      "phrase": "Valentine's Day",
+      "icon": "heart",
+      "timeSensitive": "valentines-day",
+      "filterByInterest": false,
+      "applicabilityCount": 0,
+      "searchPhrase": "Valentines Day",
+      "isNew": false
+    },
+    "pf-154": {
+      "id": "pf-154",
+      "productType": "Women's Jewellery",
+      "productStyle": "ALL",
+      "category": "Person",
+      "phrase": "Valentine's Day",
+      "icon": "heart",
+      "timeSensitive": "valentines-day",
+      "filterByInterest": false,
+      "applicabilityCount": 4,
+      "searchPhrase": "Valentines Day",
+      "isNew": false
+    }
+  }
+}

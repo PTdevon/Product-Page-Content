@@ -29,7 +29,6 @@ const LIST_QUERY = `
 const CREATE_MUTATION = `
   mutation CreateSettings($fields: [MetaobjectFieldInput!]!) {
     metaobjectCreate(metaobject: { type: "${METAOBJECT_TYPE}", fields: $fields }) {
-      metaobject { id }
       userErrors { field message }
     }
   }
@@ -38,7 +37,6 @@ const CREATE_MUTATION = `
 const UPDATE_MUTATION = `
   mutation UpdateSettings($id: ID!, $fields: [MetaobjectFieldInput!]!) {
     metaobjectUpdate(id: $id, metaobject: { fields: $fields }) {
-      metaobject { id }
       userErrors { field message }
     }
   }

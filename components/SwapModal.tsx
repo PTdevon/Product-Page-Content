@@ -108,7 +108,7 @@ export default function SwapModal({ type, slotIndex, slotLabel, productType, pro
                     className="w-full text-left px-5 py-3 hover:bg-gray-50 transition-colors group"
                   >
                     <span className="font-medium text-gray-800 text-sm group-hover:text-gray-900">{e.text}</span>
-                    {e.subtext && <span className="text-gray-500 text-sm"> — {e.subtext}</span>}
+                    {e.subtext && <span className="text-gray-500 text-sm"> {e.subtext}</span>}
                     <div className="text-[11px] text-gray-400 mt-1">{e.productType} · {e.productStyle}</div>
                   </button>
                 </li>

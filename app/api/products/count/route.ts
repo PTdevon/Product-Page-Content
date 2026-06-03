@@ -8,14 +8,14 @@ const COUNT_PRODUCTS = `
       edges {
         node {
           tags
-          productTypePt: metafield(namespace: "product", key: "product_type_pt") { value }
-          productStylePt: metafield(namespace: "product", key: "product_style_pt") { value }
+          productTypePt: metafield(namespace: "product", key: "product_type") { value }
+          productStylePt: metafield(namespace: "product", key: "product_style") { value }
           productSummary: metafield(namespace: "product", key: "product_summary") { value }
           wctBullet1: metafield(namespace: "why-choose-this", key: "bullet_1") { value }
           pfBullet1: metafield(namespace: "perfect-for", key: "perfect_bullet_1") { value }
-          seasonalMD: metafield(namespace: "seasonal-override", key: "mothers_day") { value }
-          seasonalFD: metafield(namespace: "seasonal-override", key: "fathers_day") { value }
-          seasonalVD: metafield(namespace: "seasonal-override", key: "valentines_day") { value }
+          seasonalMdPhrase: metafield(namespace: "seasonal", key: "mothers_day_phrase")    { value }
+          seasonalFdPhrase: metafield(namespace: "seasonal", key: "fathers_day_phrase")    { value }
+          seasonalVdPhrase: metafield(namespace: "seasonal", key: "valentines_day_phrase") { value }
         }
         cursor
       }
@@ -25,7 +25,7 @@ const COUNT_PRODUCTS = `
 `;
 
 type MF = { value: string } | null;
-type RawNode = { tags: string[]; productTypePt: MF; productStylePt: MF; productSummary: MF; wctBullet1: MF; pfBullet1: MF; seasonalMD: MF; seasonalFD: MF; seasonalVD: MF };
+type RawNode = { tags: string[]; productTypePt: MF; productStylePt: MF; productSummary: MF; wctBullet1: MF; pfBullet1: MF; seasonalMdPhrase: MF; seasonalFdPhrase: MF; seasonalVdPhrase: MF };
 type CountResult = { products: { edges: { node: RawNode; cursor: string }[]; pageInfo: { hasNextPage: boolean } } };
 
 function classifyStatus(node: RawNode) {
@@ -40,7 +40,7 @@ function contentStatus(node: RawNode) {
   const summary  = node.productSummary?.value ?? "";
   const wct      = node.wctBullet1?.value ?? "";
   const pf       = node.pfBullet1?.value ?? "";
-  const seasonal = node.seasonalMD?.value === "true" || node.seasonalFD?.value === "true" || node.seasonalVD?.value === "true";
+  const seasonal = !!(node.seasonalMdPhrase?.value || node.seasonalFdPhrase?.value || node.seasonalVdPhrase?.value);
   if (summary && wct && pf) return "complete";
   if (summary || wct || pf || seasonal) return "partial";
   return "missing";

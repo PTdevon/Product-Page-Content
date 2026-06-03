@@ -9,11 +9,11 @@ export function classifyStatus(node: { productTypePt: MF; productStylePt: MF }):
   return "missing";
 }
 
-export function contentStatus(node: { productSummary: MF; wctBullet1: MF; pfBullet1: MF; seasonalMD: MF; seasonalFD: MF; seasonalVD: MF }): StatusValue {
+export function contentStatus(node: { productSummary: MF; wctBullet1: MF; pfBullet1: MF; seasonalMdPhrase: MF; seasonalFdPhrase: MF; seasonalVdPhrase: MF }): StatusValue {
   const summary = node.productSummary?.value ?? "";
   const wct = node.wctBullet1?.value ?? "";
   const pf = node.pfBullet1?.value ?? "";
-  const seasonal = node.seasonalMD?.value === "true" || node.seasonalFD?.value === "true" || node.seasonalVD?.value === "true";
+  const seasonal = !!(node.seasonalMdPhrase?.value || node.seasonalFdPhrase?.value || node.seasonalVdPhrase?.value);
   if (summary && wct && pf) return "complete";
   if (summary || wct || pf || seasonal) return "partial";
   return "missing";

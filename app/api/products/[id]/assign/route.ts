@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { setProductMetafields } from "@/lib/metafields";
-import { isValidCombination } from "@/data/taxonomy";
-import { resolveIconForMetafield } from "@/lib/icons";
+import { getTaxonomy } from "@/lib/taxonomy-store";
+import { assignSeasonalPhrases } from "@/lib/assignment-engine";
+import { getLibraryEdits } from "@/lib/library-edits-store";
+import pfBase from "@/data/perfect-for.json";
+import type { PerfectForEntry } from "@/lib/types";
 
 interface AssignBody {
   productSummary: string;
   productTypePt: string;
   productStylesPt: string[];
-  seasonalOverrides?: { mothersDay: boolean; fathersDay: boolean; valentinesDay: boolean };
   whyChooseThis: { bullet1: string; bullet2: string; bullet3: string; bullet4: string };
   perfectFor: {
     bullet1: string; bullet2: string; bullet3: string; bullet4: string;
@@ -30,7 +32,9 @@ export async function POST(
 
   const styles = body.productStylesPt ?? [];
   if (body.productTypePt && styles.length > 0) {
-    const invalid = styles.find((s) => !isValidCombination(body.productTypePt, s));
+    const taxonomy = await getTaxonomy();
+    const validStyles = taxonomy[body.productTypePt] ?? [];
+    const invalid = styles.find((s) => !validStyles.includes(s));
     if (invalid) {
       return NextResponse.json(
         { error: `"${invalid}" is not a valid style for "${body.productTypePt}"` },
@@ -40,21 +44,40 @@ export async function POST(
   }
 
   try {
+    const libraryEdits = await getLibraryEdits();
+    const pfEditsMap = libraryEdits.pf;
+    const pfLibrary: PerfectForEntry[] = [
+      ...(pfBase as PerfectForEntry[]).map((e) => pfEditsMap[e.id] ? { ...e, phrase: pfEditsMap[e.id].phrase, icon: pfEditsMap[e.id].icon, timeSensitive: pfEditsMap[e.id].timeSensitive as PerfectForEntry["timeSensitive"] } : e),
+      ...Object.values(pfEditsMap).filter((e) => e.isNew).map((e) => ({
+        id: e.id, productType: e.productType, productStyle: e.productStyle,
+        category: e.category as PerfectForEntry["category"], phrase: e.phrase, icon: e.icon,
+        timeSensitive: e.timeSensitive as PerfectForEntry["timeSensitive"],
+        filterByInterest: e.filterByInterest, applicabilityCount: e.applicabilityCount,
+      })),
+    ];
+
+    const ctx = { title: "", descriptionText: "", productType: body.productTypePt, productStyles: styles };
+    const seasonal = assignSeasonalPhrases(ctx, pfLibrary);
+
     await setProductMetafields(productGid, {
       productSummary: body.productSummary,
       productTypePt: body.productTypePt,
       productStylePt: styles.join(","),
-      ...(body.seasonalOverrides !== undefined && { seasonalOverrides: body.seasonalOverrides }),
+      seasonalOverrides: {
+        mothersDay:    seasonal.mothersDay    ?? { phrase: "", icon: "" },
+        fathersDay:    seasonal.fathersDay    ?? { phrase: "", icon: "" },
+        valentinesDay: seasonal.valentinesDay ?? { phrase: "", icon: "" },
+      },
       whyChooseThis: body.whyChooseThis,
       perfectFor: {
         bullet1: body.perfectFor.bullet1,
         bullet2: body.perfectFor.bullet2,
         bullet3: body.perfectFor.bullet3,
         bullet4: body.perfectFor.bullet4,
-        icon1: resolveIconForMetafield(body.perfectFor.icon1),
-        icon2: resolveIconForMetafield(body.perfectFor.icon2),
-        icon3: resolveIconForMetafield(body.perfectFor.icon3),
-        icon4: resolveIconForMetafield(body.perfectFor.icon4),
+        icon1: body.perfectFor.icon1,
+        icon2: body.perfectFor.icon2,
+        icon3: body.perfectFor.icon3,
+        icon4: body.perfectFor.icon4,
       },
     });
   } catch (err) {

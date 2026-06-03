@@ -31,6 +31,12 @@ export interface AssignedPerfectFor {
   icons: string[];
 }
 
+export interface AssignedSeasonalPhrases {
+  mothersDay:    { phrase: string; icon: string } | null;
+  fathersDay:    { phrase: string; icon: string } | null;
+  valentinesDay: { phrase: string; icon: string } | null;
+}
+
 const WCT_CATEGORIES = ["Stands Out", "Gift Impact", "Trusted Pick", "Worth Keeping"] as const;
 
 function seededRandom(seed: number) {
@@ -92,6 +98,41 @@ function productMatchesInterest(
   return keywords.some((k) => text.includes(k.toLowerCase()));
 }
 
+export function assignSeasonalPhrases(
+  product: ProductContext,
+  library: PerfectForEntry[],
+  seed?: number
+): AssignedSeasonalPhrases {
+  const rand = seed !== undefined ? seededRandom(seed) : Math.random.bind(Math);
+
+  function pickForSeason(key: "mothers-day" | "fathers-day" | "valentines-day"): { phrase: string; icon: string } | null {
+    const candidates = library.filter((e) => {
+      if (e.timeSensitive !== key) return false;
+      const typeMatch  = e.productType  === "ALL" || e.productType  === product.productType;
+      const styleMatch = e.productStyle === "ALL" || product.productStyles.includes(e.productStyle);
+      return typeMatch && styleMatch;
+    });
+    if (candidates.length === 0) return null;
+    // Sort descending by applicabilityCount so higher-specificity entries win,
+    // then shuffle within the top tier to vary selection across equal candidates.
+    candidates.sort((a, b) => (b.applicabilityCount ?? 0) - (a.applicabilityCount ?? 0));
+    const topCount = candidates[0].applicabilityCount ?? 0;
+    const topTier = candidates.filter((e) => (e.applicabilityCount ?? 0) === topCount);
+    for (let i = topTier.length - 1; i > 0; i--) {
+      const j = Math.floor(rand() * (i + 1));
+      [topTier[i], topTier[j]] = [topTier[j], topTier[i]];
+    }
+    const chosen = topTier[0];
+    return { phrase: chosen.phrase, icon: chosen.icon };
+  }
+
+  return {
+    mothersDay:    pickForSeason("mothers-day"),
+    fathersDay:    pickForSeason("fathers-day"),
+    valentinesDay: pickForSeason("valentines-day"),
+  };
+}
+
 export function assignPerfectFor(
   product: ProductContext,
   library: PerfectForEntry[],
@@ -102,10 +143,9 @@ export function assignPerfectFor(
   interestKeywords: Record<string, string[]> = {}
 ): AssignedPerfectFor {
   const rand = seed !== undefined ? seededRandom(seed) : Math.random.bind(Math);
-  void rand;
 
   // Step 1: filter — seasonal entries always excluded (handled by theme at display time)
-  const candidates = library.filter((entry) => {
+  const filtered = library.filter((entry) => {
     if (entry.timeSensitive) return false;
     if (entry.filterByInterest && !productMatchesInterest(entry, product, interestKeywords)) return false;
     const typeMatch = entry.productType === "ALL" || entry.productType === product.productType;
@@ -113,12 +153,21 @@ export function assignPerfectFor(
     return typeMatch && styleMatch;
   });
 
-  // Step 2: sort by specificity
+  // Step 2: shuffle candidates so within-tier selection varies across runs
+  const candidates = [...filtered];
+  for (let i = candidates.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+  }
+
+  // Randomly decide whether to lead with specific or ALL phrases
+  const prioritiseSpecific = rand() < 0.5;
+
   const sorted = [...candidates].sort((a, b) => {
-    const aNiche = a.productStyle !== "ALL" ? 0 : 1;
-    const bNiche = b.productStyle !== "ALL" ? 0 : 1;
-    if (aNiche !== bNiche) return aNiche - bNiche;
-    return a.applicabilityCount - b.applicabilityCount;
+    const aSpecific = a.productStyle !== "ALL" ? 0 : 1;
+    const bSpecific = b.productStyle !== "ALL" ? 0 : 1;
+    const order = prioritiseSpecific ? aSpecific - bSpecific : bSpecific - aSpecific;
+    return order; // preserve shuffle order within tier (no secondary sort)
   });
 
   // Step 3: pick 4 with category diversity

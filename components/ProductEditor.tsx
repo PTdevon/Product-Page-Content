@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { PRODUCT_TYPES, getValidStyles } from "@/data/taxonomy";
+import { PRODUCT_TAXONOMY } from "@/data/taxonomy";
 import SwapModal from "./SwapModal";
 import IconPicker from "./IconPicker";
 
@@ -118,7 +118,6 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
   // Form state
   const [productType, setProductType] = useState("");
   const [productStyles, setProductStyles] = useState<string[]>([]);
-  const [seasonalOverrides, setSeasonalOverrides] = useState({ mothersDay: false, fathersDay: false, valentinesDay: false });
   const [productSummary, setProductSummary] = useState("");
   const [summaryOptions, setSummaryOptions] = useState<string[]>([]);
   const [generatingOptions, setGeneratingOptions] = useState(false);
@@ -134,6 +133,12 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
   const [wctSlotCounts, setWctSlotCounts] = useState<number[]>([1, 1, 1, 1]);
   const [pfSwapCount, setPfSwapCount] = useState<number>(1);
   const [typeStyleError, setTypeStyleError] = useState("");
+  const [modalImage, setModalImage] = useState<string | null>(null);
+  const [taxonomy, setTaxonomy] = useState<Record<string, string[]>>(PRODUCT_TAXONOMY);
+
+  useEffect(() => {
+    fetch("/api/taxonomy").then((r) => r.ok ? r.json() : null).then((d) => { if (d?.taxonomy) setTaxonomy(d.taxonomy); }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     setSummaryOptions([]);
@@ -149,7 +154,6 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
         setProductType(d.metafields.productTypePt);
         setProductStyles(d.metafields.productStylePt ? d.metafields.productStylePt.split(",").map(s => s.trim()).filter(Boolean) : []);
         setProductSummary(d.metafields.productSummary);
-        setSeasonalOverrides(d.metafields.seasonalOverrides ?? { mothersDay: false, fathersDay: false, valentinesDay: false });
 
         // Use saved metafields, fall back to preview
         const wct = d.metafields.whyChooseThis.bullet1
@@ -174,13 +178,13 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
       .finally(() => setLoading(false));
   }, [productId]);
 
-  async function refreshPreview(type: string, styles: string[], overrides = seasonalOverrides) {
+  async function refreshPreview(type: string, styles: string[]) {
     if (!type || styles.length === 0) return;
     setPreviewLoading(true);
     const res = await fetch("/api/preview", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ productId, productType: type, productStyles: styles, seasonalOverrides: overrides }),
+      body: JSON.stringify({ productId, productType: type, productStyles: styles }),
     });
     const preview = await res.json();
     setWctBullets(preview.whyChooseThis);
@@ -218,7 +222,7 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
     const res = await fetch("/api/preview", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ productId, productType, productStyles, seasonalOverrides }),
+      body: JSON.stringify({ productId, productType, productStyles }),
     });
     const preview = await res.json();
     if (preview.whyChooseThis) setWctBullets(preview.whyChooseThis);
@@ -228,13 +232,6 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
     setReassigningWct(false);
   }
 
-  function handleSeasonalToggle(key: keyof typeof seasonalOverrides) {
-    setSeasonalOverrides((prev) => {
-      const next = { ...prev, [key]: !prev[key] };
-      refreshPreview(productType, productStyles, next);
-      return next;
-    });
-  }
 
   async function handleGenerateSummary() {
     setGeneratingOptions(true);
@@ -312,7 +309,6 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
         productSummary,
         productTypePt: productType,
         productStylesPt: productStyles,
-        seasonalOverrides,
         whyChooseThis: wctBullets,
         perfectFor: {
           bullet1: pfSlots[0]?.phrase ?? "",
@@ -346,7 +342,7 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
     return <div className="p-8 text-red-500 text-sm">{error}</div>;
   }
 
-  const validStyles = getValidStyles(productType);
+  const validStyles = taxonomy[productType] ?? [];
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
@@ -361,33 +357,48 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
                 <img
                   src={data.product.featuredImage.url}
                   alt=""
-                  className="w-14 h-14 object-cover rounded-md shrink-0 ring-1 ring-gray-200"
+                  className="w-14 h-14 object-cover rounded-md shrink-0 ring-1 ring-gray-200 cursor-zoom-in hover:opacity-80 transition-opacity"
+                  onClick={() => setModalImage(data.product.featuredImage!.url)}
                 />
               )}
               <div>
                 <h2 className="font-semibold text-gray-900 text-base leading-snug">{productTitle || data?.product.title}</h2>
-                <a
-                  href={`https://${process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN ?? "penelopetom-office.myshopify.com"}/products/${data?.product.handle}?view=pdp-redesign`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-sm text-gray-400 hover:text-gray-600 hover:underline mt-1 inline-block transition-colors"
-                >
-                  Preview on site →
-                </a>
-                {data?.product.id && (() => {
-                  const numericId = data.product.id.split("/").pop();
-                  const storeName = (process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN ?? "penelopetom-office.myshopify.com").replace(".myshopify.com", "");
-                  return (
-                    <a
-                      href={`https://admin.shopify.com/store/${storeName}/apps/256-metafields-editor/products/${numericId}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-sm text-gray-400 hover:text-gray-600 hover:underline mt-0.5 block transition-colors"
-                    >
-                      Preview metafields on Shopify →
-                    </a>
-                  );
-                })()}
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                  <a
+                    href={`https://${process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN ?? "penelopetom-office.myshopify.com"}/products/${data?.product.handle}?view=pdp-redesign`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-sm text-gray-400 hover:text-gray-600 hover:underline transition-colors"
+                  >
+                    Preview on site
+                  </a>
+                  {data?.product.id && (() => {
+                    const numericId = data.product.id.split("/").pop();
+                    const storeName = (process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN ?? "penelopetom-office.myshopify.com").replace(".myshopify.com", "");
+                    return (
+                      <>
+                        <span className="text-gray-300">|</span>
+                        <a
+                          href={`https://admin.shopify.com/store/${storeName}/products/${numericId}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-sm text-gray-400 hover:text-gray-600 hover:underline transition-colors"
+                        >
+                          Edit on Shopify
+                        </a>
+                        <span className="text-gray-300">|</span>
+                        <a
+                          href={`https://admin.shopify.com/store/${storeName}/apps/256-metafields-editor/products/${numericId}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-sm text-gray-400 hover:text-gray-600 hover:underline transition-colors"
+                        >
+                          Edit metafields on Shopify
+                        </a>
+                      </>
+                    );
+                  })()}
+                </div>
               </div>
             </div>
             <button
@@ -407,7 +418,7 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
               className="w-full px-3 py-2 bg-white border border-gray-200 rounded-md text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent mb-3"
             >
               <option value="">Select type…</option>
-              {PRODUCT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              {Object.keys(taxonomy).map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
             {productType && (
               <div className="flex flex-wrap gap-x-4 gap-y-2">
@@ -627,26 +638,6 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
               ))}
             </div>
             )}
-            <div className="mt-3 pt-3 border-t border-gray-100">
-              <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Perfect For Seasonal Occasions</p>
-              <div className="flex flex-wrap gap-x-4 gap-y-2">
-                {([
-                  { key: "mothersDay",    label: "Mother's Day" },
-                  { key: "fathersDay",    label: "Father's Day" },
-                  { key: "valentinesDay", label: "Valentine's Day" },
-                ] as const).map(({ key, label }) => (
-                  <label key={key} className="flex items-center gap-1.5 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={seasonalOverrides[key]}
-                      onChange={() => handleSeasonalToggle(key)}
-                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <span className="text-sm text-gray-700">{label}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
           </section>
 
         </div>
@@ -691,6 +682,31 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
           }}
           onClose={() => setIconPickerSlot(null)}
         />
+      )}
+
+      {/* Image modal */}
+      {modalImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+          onClick={() => setModalImage(null)}
+        >
+          <div
+            className="relative max-w-2xl max-h-[80vh] rounded-lg overflow-hidden shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={modalImage}
+              alt="Product image"
+              className="max-w-full max-h-[80vh] object-contain"
+            />
+            <button
+              onClick={() => setModalImage(null)}
+              className="absolute top-2 right-2 w-8 h-8 flex items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70 text-lg leading-none"
+            >
+              ×
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -1,0 +1,71 @@
+{
+  "Bags & Purses": [
+    "Elegant",
+    "Personalised",
+    "Practical",
+    "Bold/Colourful"
+  ],
+  "Home": [
+    "Bold/Colourful",
+    "Classic/Timeless",
+    "Earthy/Natural",
+    "Minimal",
+    "Playful",
+    "EcoFriendly"
+  ],
+  "Women's Jewellery": [
+    "Dainty",
+    "Minimal",
+    "Personalised",
+    "Statement"
+  ],
+  "Children's Jewellery": [
+    "Dainty",
+    "Minimal",
+    "Personalised"
+  ],
+  "Men's Jewellery & Accessories": [
+    "Classic",
+    "Modern",
+    "Personalised",
+    "Novelty"
+  ],
+  "Children": [
+    "Classic/Timeless",
+    "Playful",
+    "Creative"
+  ],
+  "Books & Stationery": [
+    "Illustrated",
+    "Inspirational",
+    "Practical"
+  ],
+  "Personalised Accessories": [
+    "Classic",
+    "Novelty"
+  ],
+  "Candles / Diffusers": [
+    "Novelty",
+    "Premium"
+  ],
+  "Greetings Cards": [
+    "Nature",
+    "Novelty/Humorous"
+  ],
+  "Fairy Lights": [
+    "Minimal",
+    "Decorative",
+    "Colourful"
+  ],
+  "Furniture & Lighting": [
+    "Minimal",
+    "Scandi",
+    "Statement",
+    "Contemporary Classic"
+  ],
+  "Christmas Themed Products": [
+    "Traditional",
+    "Minimal",
+    "Novelty"
+  ]
+}

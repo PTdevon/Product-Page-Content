@@ -4,7 +4,7 @@ import { getProductWithMetafields } from "@/lib/metafields";
 import { assignWhyChooseThis, assignPerfectFor } from "@/lib/assignment-engine";
 import { generateProductSummary } from "@/lib/generate-summary";
 import { getSettings } from "@/lib/settings-store";
-import { resolveIconForMetafield } from "@/lib/icons";
+
 import wctData from "@/data/why-choose-this.json";
 import pfData from "@/data/perfect-for.json";
 import type { WhyChooseThisEntry, PerfectForEntry } from "@/lib/types";
@@ -65,10 +65,10 @@ export async function POST(req: NextRequest) {
       pf.bullets[3] ?? "",
     ] as [string, string, string, string],
     pfIcons: [
-      resolveIconForMetafield(pf.icons[0] ?? ""),
-      resolveIconForMetafield(pf.icons[1] ?? ""),
-      resolveIconForMetafield(pf.icons[2] ?? ""),
-      resolveIconForMetafield(pf.icons[3] ?? ""),
+      pf.icons[0] ?? "",
+      pf.icons[1] ?? "",
+      pf.icons[2] ?? "",
+      pf.icons[3] ?? "",
     ] as [string, string, string, string],
   });
 }

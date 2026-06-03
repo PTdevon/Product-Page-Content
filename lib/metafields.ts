@@ -9,7 +9,11 @@ export interface ProductMetafieldData {
     bullet1: string; bullet2: string; bullet3: string; bullet4: string;
     icon1?: string; icon2?: string; icon3?: string; icon4?: string;
   };
-  seasonalOverrides: { mothersDay: boolean; fathersDay: boolean; valentinesDay: boolean };
+  seasonalOverrides: {
+    mothersDay:    { phrase: string; icon: string };
+    fathersDay:    { phrase: string; icon: string };
+    valentinesDay: { phrase: string; icon: string };
+  };
 }
 
 const GET_PRODUCT_METAFIELDS = `
@@ -21,8 +25,8 @@ const GET_PRODUCT_METAFIELDS = `
       descriptionHtml
       featuredImage { url altText }
       productSummary:  metafield(namespace: "product",          key: "product_summary")   { value }
-      productTypePt:   metafield(namespace: "product",          key: "product_type_pt")   { value }
-      productStylePt:  metafield(namespace: "product",          key: "product_style_pt")  { value }
+      productTypePt:   metafield(namespace: "product",          key: "product_type")   { value }
+      productStylePt:  metafield(namespace: "product",          key: "product_style")  { value }
       wctBullet1:      metafield(namespace: "why-choose-this",  key: "bullet_1")           { value }
       wctBullet2:      metafield(namespace: "why-choose-this",  key: "bullet_2")           { value }
       wctBullet3:      metafield(namespace: "why-choose-this",  key: "bullet_3")           { value }
@@ -35,9 +39,12 @@ const GET_PRODUCT_METAFIELDS = `
       pfIcon2:         metafield(namespace: "perfect-for",      key: "icon_2")             { value }
       pfIcon3:         metafield(namespace: "perfect-for",      key: "icon_3")             { value }
       pfIcon4:         metafield(namespace: "perfect-for",      key: "icon_4")             { value }
-      seasonalMD:      metafield(namespace: "seasonal-override", key: "mothers_day")        { value }
-      seasonalFD:      metafield(namespace: "seasonal-override", key: "fathers_day")        { value }
-      seasonalVD:      metafield(namespace: "seasonal-override", key: "valentines_day")     { value }
+      sMdPhrase:  metafield(namespace: "seasonal", key: "mothers_day_phrase")    { value }
+      sMdIcon:    metafield(namespace: "seasonal", key: "mothers_day_icon")      { value }
+      sFdPhrase:  metafield(namespace: "seasonal", key: "fathers_day_phrase")    { value }
+      sFdIcon:    metafield(namespace: "seasonal", key: "fathers_day_icon")      { value }
+      sVdPhrase:  metafield(namespace: "seasonal", key: "valentines_day_phrase") { value }
+      sVdIcon:    metafield(namespace: "seasonal", key: "valentines_day_icon")   { value }
     }
   }
 `;
@@ -54,7 +61,7 @@ interface GetProductResponse {
     wctBullet1: MF; wctBullet2: MF; wctBullet3: MF; wctBullet4: MF;
     pfBullet1: MF; pfBullet2: MF; pfBullet3: MF; pfBullet4: MF;
     pfIcon1: MF; pfIcon2: MF; pfIcon3: MF; pfIcon4: MF;
-    seasonalMD: MF; seasonalFD: MF; seasonalVD: MF;
+    sMdPhrase: MF; sMdIcon: MF; sFdPhrase: MF; sFdIcon: MF; sVdPhrase: MF; sVdIcon: MF;
   } | null;
 }
 
@@ -84,9 +91,9 @@ export async function getProductWithMetafields(productGid: string) {
       icon4:   p.pfIcon4?.value   ?? "",
     },
     seasonalOverrides: {
-      mothersDay:    p.seasonalMD?.value === "true",
-      fathersDay:    p.seasonalFD?.value === "true",
-      valentinesDay: p.seasonalVD?.value === "true",
+      mothersDay:    { phrase: p.sMdPhrase?.value ?? "", icon: p.sMdIcon?.value ?? "" },
+      fathersDay:    { phrase: p.sFdPhrase?.value ?? "", icon: p.sFdIcon?.value ?? "" },
+      valentinesDay: { phrase: p.sVdPhrase?.value ?? "", icon: p.sVdIcon?.value ?? "" },
     },
   };
 
@@ -129,8 +136,8 @@ export async function setProductMetafields(
   };
 
   if (data.productSummary !== undefined) add("product", "product_summary", data.productSummary, "multi_line_text_field");
-  if (data.productTypePt !== undefined)  add("product", "product_type_pt",  data.productTypePt,  "single_line_text_field");
-  if (data.productStylePt !== undefined) add("product", "product_style_pt", data.productStylePt, "single_line_text_field");
+  if (data.productTypePt !== undefined)  add("product", "product_type",  data.productTypePt,  "single_line_text_field");
+  if (data.productStylePt !== undefined) add("product", "product_style", data.productStylePt, "single_line_text_field");
 
   if (data.whyChooseThis) {
     const w = data.whyChooseThis;
@@ -154,9 +161,13 @@ export async function setProductMetafields(
 
   if (data.seasonalOverrides) {
     const s = data.seasonalOverrides;
-    add("seasonal-override", "mothers_day",    String(s.mothersDay),    "boolean");
-    add("seasonal-override", "fathers_day",    String(s.fathersDay),    "boolean");
-    add("seasonal-override", "valentines_day", String(s.valentinesDay), "boolean");
+    // Only write non-empty values — Shopify rejects blank metafield values
+    if (s.mothersDay.phrase)    add("seasonal", "mothers_day_phrase",    s.mothersDay.phrase,    "single_line_text_field");
+    if (s.mothersDay.icon)      add("seasonal", "mothers_day_icon",      s.mothersDay.icon,      "single_line_text_field");
+    if (s.fathersDay.phrase)    add("seasonal", "fathers_day_phrase",    s.fathersDay.phrase,    "single_line_text_field");
+    if (s.fathersDay.icon)      add("seasonal", "fathers_day_icon",      s.fathersDay.icon,      "single_line_text_field");
+    if (s.valentinesDay.phrase) add("seasonal", "valentines_day_phrase", s.valentinesDay.phrase, "single_line_text_field");
+    if (s.valentinesDay.icon)   add("seasonal", "valentines_day_icon",   s.valentinesDay.icon,   "single_line_text_field");
   }
 
   if (inputs.length === 0) return;

@@ -14,14 +14,14 @@ const LIST_PRODUCTS = `
           handle
           tags
           featuredImage { url }
-          productTypePt: metafield(namespace: "product", key: "product_type_pt") { value }
-          productStylePt: metafield(namespace: "product", key: "product_style_pt") { value }
+          productTypePt: metafield(namespace: "product", key: "product_type") { value }
+          productStylePt: metafield(namespace: "product", key: "product_style") { value }
           productSummary: metafield(namespace: "product", key: "product_summary") { value }
           wctBullet1: metafield(namespace: "why-choose-this", key: "bullet_1") { value }
           pfBullet1: metafield(namespace: "perfect-for", key: "perfect_bullet_1") { value }
-          seasonalMD: metafield(namespace: "seasonal-override", key: "mothers_day") { value }
-          seasonalFD: metafield(namespace: "seasonal-override", key: "fathers_day") { value }
-          seasonalVD: metafield(namespace: "seasonal-override", key: "valentines_day") { value }
+          seasonalMdPhrase: metafield(namespace: "seasonal", key: "mothers_day_phrase")    { value }
+          seasonalFdPhrase: metafield(namespace: "seasonal", key: "fathers_day_phrase")    { value }
+          seasonalVdPhrase: metafield(namespace: "seasonal", key: "valentines_day_phrase") { value }
         }
         cursor
       }
@@ -60,7 +60,7 @@ export async function GET(req: NextRequest) {
       featuredImage: { url: string } | null;
       productTypePt: MF; productStylePt: MF;
       productSummary: MF; wctBullet1: MF; pfBullet1: MF;
-      seasonalMD: MF; seasonalFD: MF; seasonalVD: MF;
+      seasonalMdPhrase: MF; seasonalFdPhrase: MF; seasonalVdPhrase: MF;
     };
     cursor: string;
   };
@@ -78,6 +78,9 @@ export async function GET(req: NextRequest) {
   const MAX_ITERATIONS = statusFilter ? 10 : 1;
   let iterations = 0;
 
+  let shopifyTotal = 0;
+  let filteredByTag = 0;
+
   try {
   while (matched.length < PAGE_SIZE && hasMore && iterations < MAX_ITERATIONS) {
     iterations++;
@@ -85,10 +88,12 @@ export async function GET(req: NextRequest) {
       products: { edges: RawEdge[]; pageInfo: { hasNextPage: boolean } };
     }>(LIST_PRODUCTS, { first: SHOPIFY_BATCH, after: scanCursor, query });
 
+    shopifyTotal += data.products.edges.length;
+
     for (const edge of data.products.edges) {
       if (matched.length >= PAGE_SIZE) break;
-      if (edge.node.tags.includes("hidden")) continue;
-      if (edge.node.tags.some(t => t.toLowerCase() === "christmas")) continue;
+      if (edge.node.tags.includes("hidden")) { filteredByTag++; continue; }
+      if (edge.node.tags.some(t => t.toLowerCase() === "christmas")) { filteredByTag++; continue; }
       const cs        = classifyStatus(edge.node);
       const contentSt = contentStatus(edge.node);
       if (!statusFilter || matchesFilter(statusFilter, cs, contentSt)) {
@@ -120,9 +125,11 @@ export async function GET(req: NextRequest) {
   }
 
   const products = matched.map((e) => e.product);
-  // Use the last returned product's cursor as the next page token so that
-  // subsequent requests resume from exactly after where we stopped.
   const nextCursor = matched.length >= PAGE_SIZE ? matched[matched.length - 1].cursor : null;
 
-  return NextResponse.json({ products, nextCursor });
+  const debug = process.env.NODE_ENV === "development"
+    ? { shopifyQuery: query, shopifyReturned: shopifyTotal, filteredByTag, matched: products.length }
+    : undefined;
+
+  return NextResponse.json({ products, nextCursor, ...(debug ? { _debug: debug } : {}) });
 }

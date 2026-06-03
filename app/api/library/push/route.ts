@@ -10,8 +10,8 @@ const SCAN_QUERY = `
       edges {
         node {
           id title
-          typePt:  metafield(namespace: "product",         key: "product_type_pt")  { value }
-          stylePt: metafield(namespace: "product",         key: "product_style_pt") { value }
+          typePt:  metafield(namespace: "product",         key: "product_type")  { value }
+          stylePt: metafield(namespace: "product",         key: "product_style") { value }
           wct1:    metafield(namespace: "why-choose-this", key: "bullet_1")          { value }
           wct2:    metafield(namespace: "why-choose-this", key: "bullet_2")          { value }
           wct3:    metafield(namespace: "why-choose-this", key: "bullet_3")          { value }

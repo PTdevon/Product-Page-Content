@@ -1,6 +1,6 @@
 const domain = process.env.SHOPIFY_STORE_DOMAIN!;
 const token = process.env.SHOPIFY_ACCESS_TOKEN!;
-const API_VERSION = "2026-01";
+const API_VERSION = "2025-10";
 
 export async function shopifyGraphQL<T>(
   query: string,
@@ -19,7 +19,9 @@ export async function shopifyGraphQL<T>(
   );
 
   if (!res.ok) {
-    throw new Error(`Shopify API error: ${res.status} ${res.statusText}`);
+    const body = await res.text().catch(() => "");
+    const url = `https://${domain}/admin/api/${API_VERSION}/graphql.json`;
+    throw new Error(`Shopify API error: ${res.status} ${res.statusText} (url: ${url})${body ? ` — ${body.slice(0, 200)}` : ""}`);
   }
 
   const json = await res.json();

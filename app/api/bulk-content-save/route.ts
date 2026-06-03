@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { setProductMetafields } from "@/lib/metafields";
+import { assignSeasonalPhrases } from "@/lib/assignment-engine";
+import { getLibraryEdits } from "@/lib/library-edits-store";
+import pfBase from "@/data/perfect-for.json";
+import type { PerfectForEntry } from "@/lib/types";
 
 interface ContentRowSave {
   productId: string;
@@ -10,7 +14,6 @@ interface ContentRowSave {
   pfIcons: [string, string, string, string];
   productTypePt?: string;
   productStylePt?: string;
-  seasonalOverrides?: { mothersDay: boolean; fathersDay: boolean; valentinesDay: boolean };
 }
 
 export async function POST(req: NextRequest) {
@@ -19,15 +22,40 @@ export async function POST(req: NextRequest) {
 
   const { rows } = await req.json() as { rows: ContentRowSave[] };
 
+  const libraryEdits = await getLibraryEdits();
+  const pfEditsMap = libraryEdits.pf;
+  const pfLibrary: PerfectForEntry[] = [
+    ...(pfBase as PerfectForEntry[]).map((e) => pfEditsMap[e.id] ? { ...e, phrase: pfEditsMap[e.id].phrase, icon: pfEditsMap[e.id].icon, timeSensitive: pfEditsMap[e.id].timeSensitive as PerfectForEntry["timeSensitive"] } : e),
+    ...Object.values(pfEditsMap).filter((e) => e.isNew).map((e) => ({
+      id: e.id, productType: e.productType, productStyle: e.productStyle,
+      category: e.category as PerfectForEntry["category"], phrase: e.phrase, icon: e.icon,
+      timeSensitive: e.timeSensitive as PerfectForEntry["timeSensitive"],
+      filterByInterest: e.filterByInterest, applicabilityCount: e.applicabilityCount,
+    })),
+  ];
+
   let saved = 0;
   let failed = 0;
 
   for (const row of rows) {
     try {
+      const seasonal = row.productTypePt !== undefined
+        ? assignSeasonalPhrases(
+            { title: "", descriptionText: "", productType: row.productTypePt, productStyles: row.productStylePt ? row.productStylePt.split(",").map((s) => s.trim()).filter(Boolean) : [] },
+            pfLibrary
+          )
+        : null;
+
       await setProductMetafields(row.productId, {
         ...(row.productTypePt !== undefined && { productTypePt: row.productTypePt }),
         ...(row.productStylePt !== undefined && { productStylePt: row.productStylePt }),
-        ...(row.seasonalOverrides !== undefined && { seasonalOverrides: row.seasonalOverrides }),
+        ...(seasonal && {
+          seasonalOverrides: {
+            mothersDay:    seasonal.mothersDay    ?? { phrase: "", icon: "" },
+            fathersDay:    seasonal.fathersDay    ?? { phrase: "", icon: "" },
+            valentinesDay: seasonal.valentinesDay ?? { phrase: "", icon: "" },
+          },
+        }),
         productSummary: row.summary,
         whyChooseThis: {
           bullet1: row.wctBullets[0],
