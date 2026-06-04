@@ -41,18 +41,6 @@ export function proxy(req: NextRequest) {
     }
   }
 
-  // Production: page requests without Shopify context are rejected
-  if (process.env.NODE_ENV === "production" && !pathname.startsWith("/api/")) {
-    const shop = req.nextUrl.searchParams.get("shop");
-    const host = req.nextUrl.searchParams.get("host");
-    if (!shop && !host) {
-      return new NextResponse("<html><body><p>Open this app from Shopify Admin.</p></body></html>", {
-        status: 401,
-        headers: { "Content-Type": "text/html" },
-      });
-    }
-  }
-
   return NextResponse.next();
 }
 
