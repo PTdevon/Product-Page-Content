@@ -2,7 +2,8 @@ import { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { shopifyGraphQL } from "@/lib/shopify";
 import { setProductMetafields } from "@/lib/metafields";
-import { getLibraryEdits, markWCTPushed, markPFPushed } from "@/lib/library-edits-store";
+import { getLibraryEdits, markWCTPushed } from "@/lib/library-edits-store";
+import { findPhraseForEntry, markPFPhrasePushed } from "@/lib/pf-store";
 
 const SCAN_QUERY = `
   query ScanProducts($first: Int!, $after: String) {
@@ -49,12 +50,6 @@ export async function POST(req: NextRequest) {
 
   const { type, id } = await req.json() as { type: "wct" | "pf"; id: string };
 
-  const edits = await getLibraryEdits();
-  const entry = type === "wct" ? edits.wct[id] : edits.pf[id];
-  if (!entry) {
-    return new Response(JSON.stringify({ error: "Entry not found" }), { status: 404 });
-  }
-
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({
@@ -68,7 +63,14 @@ export async function POST(req: NextRequest) {
       let cursor: string | null = null;
 
       if (type === "wct") {
+        const edits = await getLibraryEdits();
         const wctEntry = edits.wct[id];
+        if (!wctEntry) {
+          send({ type: "done", total: 0, updated: 0, skipped: 0, failed: 0 });
+          controller.close();
+          return;
+        }
+
         const oldFormatted = wctEntry.searchFormatted;
         const newFormatted = formatWCT(wctEntry.text, wctEntry.subtext);
 
@@ -85,7 +87,6 @@ export async function POST(req: NextRequest) {
             const productType = node.typePt?.value ?? "";
             const productStyle = node.stylePt?.value ?? "";
 
-            // Only check products of matching type/style
             if (productType !== wctEntry.productType || !productStyle.split(",").map((s: string) => s.trim()).includes(wctEntry.productStyle)) {
               skipped++;
               continue;
@@ -122,15 +123,16 @@ export async function POST(req: NextRequest) {
         if (updated > 0) await markWCTPushed(id, newFormatted);
 
       } else {
-        const pfEntry = edits.pf[id];
-        const oldPhrase = pfEntry.searchPhrase;
-        const newPhrase = pfEntry.phrase;
-
-        if (!oldPhrase) {
+        // PF: id is a phraseId
+        const found = await findPhraseForEntry(id);
+        if (!found || !found.edit?.searchPhrase) {
           send({ type: "done", total: 0, updated: 0, skipped: 0, failed: 0 });
           controller.close();
           return;
         }
+
+        const oldPhrase = found.edit.searchPhrase;
+        const newPhrase = found.phrase.phrase;
 
         while (true) {
           const data: ScanResult = await shopifyGraphQL<ScanResult>(SCAN_QUERY, { first: 250, after: cursor });
@@ -164,7 +166,7 @@ export async function POST(req: NextRequest) {
           cursor = data.products.edges[data.products.edges.length - 1]?.cursor ?? null;
         }
 
-        if (updated > 0) await markPFPushed(id, newPhrase);
+        if (updated > 0) await markPFPhrasePushed(id, newPhrase);
       }
 
       const total = updated + skipped + failed;

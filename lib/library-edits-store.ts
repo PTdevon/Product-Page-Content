@@ -14,31 +14,49 @@ export interface WCTEdit {
   isNew: boolean;
 }
 
-export interface PFEdit {
-  id: string;
-  productType: string;
-  productStyle: string;
-  category: string;
+// Phrase-level edit — covers phrase text, icon, category, seasonal, filterByInterest
+export interface PFPhraseEdit {
+  id: string;           // phraseId
   phrase: string;
   icon: string;
-  timeSensitive: string | null;
-  filterByInterest: boolean;
-  applicabilityCount: number;
-  searchPhrase: string;
+  searchPhrase: string; // original phrase text used to find products that need updating
   isNew: boolean;
+  deleted?: boolean;    // true = phrase has been deleted
+  // Optional fields — only present when overriding phrase-level attributes
+  category?: string;
+  timeSensitive?: string | null;
+  filterByInterest?: boolean;
+}
+
+// Applicability-level edit — adds or removes a type/style assignment
+export interface PFApplicabilityEdit {
+  id: string;           // applicability ID
+  phraseId: string;
+  productType: string;
+  productStyle: string;
+  applicabilityCount: number;
+  isNew: boolean;
+  deleted?: boolean;    // true = this assignment has been removed
 }
 
 export interface LibraryEdits {
   wct: Record<string, WCTEdit>;
-  pf: Record<string, PFEdit>;
+  pfPhrases: Record<string, PFPhraseEdit>;
+  pfApplicability: Record<string, PFApplicabilityEdit>;
 }
 
 export async function getLibraryEdits(): Promise<LibraryEdits> {
   try {
     const raw = await fs.readFile(EDITS_PATH, "utf-8");
-    return JSON.parse(raw) as LibraryEdits;
+    const parsed = JSON.parse(raw) as LibraryEdits;
+    // Ensure all sections exist (handles files written before this migration)
+    return {
+      wct: parsed.wct ?? {},
+      pfPhrases: parsed.pfPhrases ?? {},
+      pfApplicability: parsed.pfApplicability ?? {},
+    };
   } catch {
-    return { wct: {}, pf: {} };
+    return { wct: {}, pfPhrases: {}, pfApplicability: {} };
   }
 }
 
@@ -54,6 +72,8 @@ function serialized(fn: () => Promise<void>): Promise<void> {
   return next;
 }
 
+// ── WCT ──────────────────────────────────────────────────────────────────────
+
 export function upsertWCTEdit(entry: WCTEdit): Promise<void> {
   return serialized(async () => {
     const edits = await getLibraryEdits();
@@ -62,26 +82,10 @@ export function upsertWCTEdit(entry: WCTEdit): Promise<void> {
   });
 }
 
-export function upsertPFEdit(entry: PFEdit): Promise<void> {
-  return serialized(async () => {
-    const edits = await getLibraryEdits();
-    edits.pf[entry.id] = entry;
-    await persist(edits);
-  });
-}
-
 export function deleteWCTEdit(id: string): Promise<void> {
   return serialized(async () => {
     const edits = await getLibraryEdits();
     delete edits.wct[id];
-    await persist(edits);
-  });
-}
-
-export function deletePFEdit(id: string): Promise<void> {
-  return serialized(async () => {
-    const edits = await getLibraryEdits();
-    delete edits.pf[id];
     await persist(edits);
   });
 }
@@ -96,12 +100,48 @@ export function markWCTPushed(id: string, newFormatted: string): Promise<void> {
   });
 }
 
-export function markPFPushed(id: string, newPhrase: string): Promise<void> {
+// ── PF Phrases ────────────────────────────────────────────────────────────────
+
+export function upsertPFPhraseEdit(entry: PFPhraseEdit): Promise<void> {
   return serialized(async () => {
     const edits = await getLibraryEdits();
-    if (edits.pf[id]) {
-      edits.pf[id].searchPhrase = newPhrase;
+    edits.pfPhrases[entry.id] = entry;
+    await persist(edits);
+  });
+}
+
+export function deletePFPhraseEdit(phraseId: string): Promise<void> {
+  return serialized(async () => {
+    const edits = await getLibraryEdits();
+    delete edits.pfPhrases[phraseId];
+    await persist(edits);
+  });
+}
+
+export function markPFPhrasePushed(phraseId: string, newPhrase: string): Promise<void> {
+  return serialized(async () => {
+    const edits = await getLibraryEdits();
+    if (edits.pfPhrases[phraseId]) {
+      edits.pfPhrases[phraseId].searchPhrase = newPhrase;
       await persist(edits);
     }
+  });
+}
+
+// ── PF Applicability ──────────────────────────────────────────────────────────
+
+export function upsertPFApplicabilityEdit(entry: PFApplicabilityEdit): Promise<void> {
+  return serialized(async () => {
+    const edits = await getLibraryEdits();
+    edits.pfApplicability[entry.id] = entry;
+    await persist(edits);
+  });
+}
+
+export function deletePFApplicabilityEdit(id: string): Promise<void> {
+  return serialized(async () => {
+    const edits = await getLibraryEdits();
+    delete edits.pfApplicability[id];
+    await persist(edits);
   });
 }

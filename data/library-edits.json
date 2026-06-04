@@ -51,45 +51,23 @@
       "isNew": false
     }
   },
-  "pf": {
-    "pf-119": {
-      "id": "pf-119",
-      "productType": "Men's Jewellery & Accessories",
-      "productStyle": "ALL",
-      "category": "Occasion",
+  "pfPhrases": {
+    "phrase-065": {
+      "id": "phrase-065",
       "phrase": "Valentine's Day",
       "icon": "heart",
-      "timeSensitive": "valentines-day",
-      "filterByInterest": false,
-      "applicabilityCount": 3,
       "searchPhrase": "Valentines Day",
       "isNew": false
-    },
-    "pf-134": {
-      "id": "pf-134",
-      "productType": "Personalised accessories",
+    }
+  },
+  "pfApplicability": {
+    "pf-custom-1780583282940": {
+      "id": "pf-custom-1780583282940",
+      "phraseId": "phrase-034",
+      "productType": "Fairy Lights",
       "productStyle": "ALL",
-      "category": "Occasion",
-      "phrase": "Valentine's Day",
-      "icon": "heart",
-      "timeSensitive": "valentines-day",
-      "filterByInterest": false,
       "applicabilityCount": 0,
-      "searchPhrase": "Valentines Day",
-      "isNew": false
-    },
-    "pf-154": {
-      "id": "pf-154",
-      "productType": "Women's Jewellery",
-      "productStyle": "ALL",
-      "category": "Person",
-      "phrase": "Valentine's Day",
-      "icon": "heart",
-      "timeSensitive": "valentines-day",
-      "filterByInterest": false,
-      "applicabilityCount": 4,
-      "searchPhrase": "Valentines Day",
-      "isNew": false
+      "isNew": true
     }
   }
 }

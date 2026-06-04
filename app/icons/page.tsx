@@ -1,9 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef } from "react";
 import Nav from "@/components/Nav";
-import IconPicker from "@/components/IconPicker";
-import type { PerfectForEntry } from "@/lib/types";
 import type { UploadedIcon } from "@/lib/uploaded-icons-store";
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
@@ -23,10 +21,6 @@ export default function IconsPage() {
   const [uploadError, setUploadError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [pfEntries, setPfEntries] = useState<PerfectForEntry[]>([]);
-  const [loadingPf, setLoadingPf] = useState(true);
-  const [pfPickerEntry, setPfPickerEntry] = useState<PerfectForEntry | null>(null);
-
   useEffect(() => {
     fetch("/api/icons")
       .then((r) => r.json())
@@ -35,10 +29,6 @@ export default function IconsPage() {
         setUploadedIcons(d.uploaded ?? []);
         setLoadingIcons(false);
       });
-
-    fetch("/api/library?type=perfect")
-      .then((r) => r.json())
-      .then((d) => { setPfEntries(d.entries ?? []); setLoadingPf(false); });
   }, []);
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -66,44 +56,12 @@ export default function IconsPage() {
     }
   }
 
-  const pfByIcon = useMemo(() => {
-    const map: Record<string, PerfectForEntry[]> = {};
-    for (const e of pfEntries) {
-      const key = e.icon || "_none";
-      (map[key] ??= []).push(e);
-    }
-    return Object.entries(map)
-      .map(([iconKey, entries]) => [
-        iconKey,
-        entries.filter((e, i, arr) => arr.findIndex((x) => x.phrase === e.phrase) === i),
-      ] as [string, PerfectForEntry[]])
-      .sort(([a], [b]) => a.localeCompare(b));
-  }, [pfEntries]);
-
-  async function handlePfIconSelect(icon: string) {
-    if (!pfPickerEntry) return;
-    const phrase = pfPickerEntry.phrase;
-    setPfPickerEntry(null);
-    const matchingIds = pfEntries.filter((e) => e.phrase === phrase).map((e) => e.id);
-    await Promise.all(
-      matchingIds.map((id) =>
-        fetch("/api/library", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id, icon }),
-        })
-      )
-    );
-    setPfEntries((prev) => prev.map((e) => e.phrase === phrase ? { ...e, icon } : e));
-  }
-
   return (
     <div className="flex flex-col min-h-screen">
-      <Nav active="perfect-for" subActive="icons" />
+      <Nav active="perfect-for" subActive="icons" helpText={"Manage the icons used alongside Perfect For phrases.\nUpload your own SVG files or use the built-in icon set.\nAssign icons to phrases from the Perfect For Phrases page."} />
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-4xl mx-auto px-6 py-8 space-y-10">
 
-          {/* Icon library */}
           <section>
             <SectionHeading>Icon Library</SectionHeading>
 
@@ -164,64 +122,8 @@ export default function IconsPage() {
             )}
           </section>
 
-          {/* Phrase assignments */}
-          <section>
-            <SectionHeading>Phrase Assignments</SectionHeading>
-            <p className="text-sm text-gray-500 mb-5">
-              All Perfect For phrases grouped by their assigned icon. Click any phrase to reassign it.
-            </p>
-
-            {loadingPf ? (
-              <p className="text-sm text-gray-400">Loading…</p>
-            ) : (
-              <div className="grid grid-cols-2 gap-4">
-                {pfByIcon.map(([iconKey, phrases]) => (
-                  <div key={iconKey} className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-                    <div className="flex items-center gap-3 px-4 py-3 bg-gray-50 border-b border-gray-100">
-                      {iconKey === "_none" ? (
-                        <span className="w-5 h-5 rounded border border-dashed border-gray-300" />
-                      ) : iconKey.startsWith("<svg") ? (
-                        <span
-                          className="w-5 h-5 flex items-center justify-center [&>svg]:w-5 [&>svg]:h-5 opacity-70"
-                          dangerouslySetInnerHTML={{ __html: iconKey }}
-                        />
-                      ) : (
-                        <img src={`/icons/${iconKey}.svg`} alt={iconKey} className="w-5 h-5 opacity-70" />
-                      )}
-                      <span className="text-xs font-semibold text-gray-600">
-                        {iconKey === "_none" ? "No icon" : iconKey}
-                      </span>
-                      <span className="ml-auto text-xs text-gray-400">{phrases.length}</span>
-                    </div>
-
-                    <ul className="divide-y divide-gray-50">
-                      {phrases.map((entry) => (
-                        <li key={entry.id}>
-                          <button
-                            onClick={() => setPfPickerEntry(entry)}
-                            className="w-full text-left px-4 py-2.5 text-sm text-gray-800 hover:bg-gray-50 transition-colors"
-                          >
-                            {entry.phrase}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-
         </div>
       </div>
-
-      {pfPickerEntry && (
-        <IconPicker
-          current={pfPickerEntry.icon}
-          onSelect={handlePfIconSelect}
-          onClose={() => setPfPickerEntry(null)}
-        />
-      )}
     </div>
   );
 }

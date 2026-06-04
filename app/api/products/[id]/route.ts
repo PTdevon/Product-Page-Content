@@ -4,11 +4,10 @@ import { getProductWithMetafields } from "@/lib/metafields";
 import { assignWhyChooseThis, assignPerfectFor } from "@/lib/assignment-engine";
 import { getSettings } from "@/lib/settings-store";
 import wctData from "@/data/why-choose-this.json";
-import pfData from "@/data/perfect-for.json";
-import type { WhyChooseThisEntry, PerfectForEntry } from "@/lib/types";
+import { getPfLibrary } from "@/lib/pf-store";
+import type { WhyChooseThisEntry } from "@/lib/types";
 
 const wctLibrary = wctData as WhyChooseThisEntry[];
-const pfLibrary = pfData as PerfectForEntry[];
 
 export async function GET(
   req: NextRequest,
@@ -20,7 +19,10 @@ export async function GET(
   const { id } = await params;
   const productGid = `gid://shopify/Product/${id}`;
 
-  const { product, metafields } = await getProductWithMetafields(productGid);
+  const [{ product, metafields }, pfLibrary] = await Promise.all([
+    getProductWithMetafields(productGid),
+    getPfLibrary(),
+  ]);
 
   // Generate auto-preview if type+style are set
   let preview = null;

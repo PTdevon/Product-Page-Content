@@ -15,6 +15,7 @@ export function makeWCT(overrides: Partial<WhyChooseThisEntry> = {}): WhyChooseT
 export function makePF(overrides: Partial<PerfectForEntry> = {}): PerfectForEntry {
   return {
     id: "pf-1",
+    phraseId: "phrase-1",
     productType: "Home",
     productStyle: "Minimal",
     category: "Occasion",

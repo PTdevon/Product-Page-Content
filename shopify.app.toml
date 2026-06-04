@@ -1,5 +1,5 @@
 client_id = "fc09ae28b110a15d441e904cf94bc925"
-name = "PT PDP Content"
+name = "PT Product Page Content"
 application_url = "https://product-page-content.vercel.app"
 embedded = true
 

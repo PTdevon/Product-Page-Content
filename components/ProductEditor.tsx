@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { PRODUCT_TAXONOMY } from "@/data/taxonomy";
 import SwapModal from "./SwapModal";
 import IconPicker from "./IconPicker";
+import { Tooltip } from "./Tooltip";
 
 const WCT_SLOTS = [
   {
@@ -172,6 +173,13 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
             { phrase: pf.bullet3, icon: normalizeIcon(pf.icon3) },
             { phrase: pf.bullet4, icon: normalizeIcon(pf.icon4) },
           ]);
+        } else if (d.preview?.perfectFor.bullets.length) {
+          setPfSlots(
+            d.preview.perfectFor.bullets.map((phrase, i) => ({
+              phrase,
+              icon: d.preview!.perfectFor.icons[i] ?? "",
+            }))
+          );
         }
       })
       .catch((err: Error) => setError(err.message ?? "Failed to load product"))
@@ -449,13 +457,15 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
               placeholder="[Aesthetic benefit] + [Functional benefit] + [Permission to buy]. Include a tension-resolving line e.g. 'Looks expensive, but…'"
               className="w-full px-3 py-2.5 bg-white border border-gray-200 rounded-md text-sm text-gray-800 placeholder:text-gray-300 resize-none focus:outline-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow"
             />
-            <button
-              onClick={handleGenerateSummary}
-              disabled={generatingOptions}
-              className="mt-2 px-4 py-2 bg-white border border-gray-400 text-gray-800 text-sm font-medium rounded-md hover:bg-gray-50 hover:border-gray-600 disabled:opacity-50 transition-colors"
-            >
-              {generatingOptions ? "Generating…" : productSummary ? "Regenerate Product Summary" : "Generate Product Summary"}
-            </button>
+            <Tooltip content="Use AI to write three product description options based on this product. You'll pick your favourite before saving.">
+              <button
+                onClick={handleGenerateSummary}
+                disabled={generatingOptions}
+                className="mt-2 px-4 py-2 bg-white border border-gray-400 text-gray-800 text-sm font-medium rounded-md hover:bg-gray-50 hover:border-gray-600 disabled:opacity-50 transition-colors"
+              >
+                {generatingOptions ? "Generating…" : productSummary ? "Regenerate Product Summary" : "Generate Product Summary"}
+              </button>
+            </Tooltip>
 
             {generateError && (
               <p className="text-red-500 text-sm mt-2">
@@ -501,12 +511,14 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
                         {slot.label}
                       </span>
                       {(wctSlotCounts[i] ?? 1) > 1 && (
-                        <button
-                          onClick={() => setSwapModal({ type: "why", slotIndex: i })}
-                          className="text-xs text-gray-500 hover:text-gray-800 border border-gray-200 hover:border-gray-300 px-2.5 py-1 rounded transition-colors"
-                        >
-                          Swap
-                        </button>
+                        <Tooltip content="Replace this bullet point with a different one from your library.">
+                          <button
+                            onClick={() => setSwapModal({ type: "why", slotIndex: i })}
+                            className="text-xs text-gray-500 hover:text-gray-800 border border-gray-200 hover:border-gray-300 px-2.5 py-1 rounded transition-colors"
+                          >
+                            Swap
+                          </button>
+                        </Tooltip>
                       )}
                     </div>
                     {wctEditing?.key === slot.key ? (
@@ -562,13 +574,15 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
             </div>
             )}
             {productType && productStyles.length > 0 && wctHasAlternatives && (
-              <button
-                onClick={handleReassignWct}
-                disabled={reassigningWct}
-                className="mt-2 px-4 py-2 bg-white border border-gray-400 text-gray-800 text-sm font-medium rounded-md hover:bg-gray-50 hover:border-gray-600 disabled:opacity-50 transition-colors"
-              >
-                {reassigningWct ? "Regenerating…" : "Regenerate Why People Love"}
-              </button>
+              <Tooltip content="Ask AI to pick a fresh set of bullet points from the library for this product. Your current bullets will be replaced.">
+                <button
+                  onClick={handleReassignWct}
+                  disabled={reassigningWct}
+                  className="mt-2 px-4 py-2 bg-white border border-gray-400 text-gray-800 text-sm font-medium rounded-md hover:bg-gray-50 hover:border-gray-600 disabled:opacity-50 transition-colors"
+                >
+                  {reassigningWct ? "Regenerating…" : "Regenerate Why People Love"}
+                </button>
+              </Tooltip>
             )}
           </section>
 
@@ -582,27 +596,32 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
               {pfSlots.map((slot, i) => (
                 <div key={i} className="bg-white border border-gray-200 rounded-md px-3 py-2.5 flex items-center gap-3">
                   <div className="flex flex-col gap-0.5 shrink-0">
-                    <button
-                      onClick={() => handlePfReorder(i, -1)}
-                      disabled={i === 0}
-                      className="w-5 h-5 flex items-center justify-center text-gray-300 hover:text-gray-600 disabled:invisible transition-colors rounded hover:bg-gray-100"
-                      aria-label="Move up"
-                    >
-                      <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M18 15l-6-6-6 6"/>
-                      </svg>
-                    </button>
-                    <button
-                      onClick={() => handlePfReorder(i, 1)}
-                      disabled={i === pfSlots.length - 1}
-                      className="w-5 h-5 flex items-center justify-center text-gray-300 hover:text-gray-600 disabled:invisible transition-colors rounded hover:bg-gray-100"
-                      aria-label="Move down"
-                    >
-                      <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M6 9l6 6 6-6"/>
-                      </svg>
-                    </button>
+                    <Tooltip content="Move this phrase up one position." side="right">
+                      <button
+                        onClick={() => handlePfReorder(i, -1)}
+                        disabled={i === 0}
+                        className="w-5 h-5 flex items-center justify-center text-gray-300 hover:text-gray-600 disabled:invisible transition-colors rounded hover:bg-gray-100"
+                        aria-label="Move up"
+                      >
+                        <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M18 15l-6-6-6 6"/>
+                        </svg>
+                      </button>
+                    </Tooltip>
+                    <Tooltip content="Move this phrase down one position." side="right">
+                      <button
+                        onClick={() => handlePfReorder(i, 1)}
+                        disabled={i === pfSlots.length - 1}
+                        className="w-5 h-5 flex items-center justify-center text-gray-300 hover:text-gray-600 disabled:invisible transition-colors rounded hover:bg-gray-100"
+                        aria-label="Move down"
+                      >
+                        <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M6 9l6 6 6-6"/>
+                        </svg>
+                      </button>
+                    </Tooltip>
                   </div>
+                  <Tooltip content="Click to choose a different icon for this bullet point.">
                   <button
                     onClick={() => setIconPickerSlot(i)}
                     title="Change icon"
@@ -623,16 +642,19 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
                       <img src={`/icons/${slot.icon}.svg`} alt={slot.icon} className="w-5 h-5 opacity-70 group-hover:opacity-100" />
                     )}
                   </button>
+                  </Tooltip>
                   <span className="text-sm text-gray-700 flex-1">
                     {slot.phrase || <em className="text-gray-400 not-italic">Empty</em>}
                   </span>
                   {pfSwapCount > 1 && (
-                    <button
-                      onClick={() => setSwapModal({ type: "perfect", slotIndex: i })}
-                      className="text-xs text-gray-500 hover:text-gray-800 border border-gray-200 hover:border-gray-300 px-2.5 py-1 rounded shrink-0 transition-colors"
-                    >
-                      Swap
-                    </button>
+                    <Tooltip content="Replace this phrase with a different one from your library.">
+                      <button
+                        onClick={() => setSwapModal({ type: "perfect", slotIndex: i })}
+                        className="text-xs text-gray-500 hover:text-gray-800 border border-gray-200 hover:border-gray-300 px-2.5 py-1 rounded shrink-0 transition-colors"
+                      >
+                        Swap
+                      </button>
+                    </Tooltip>
                   )}
                 </div>
               ))}

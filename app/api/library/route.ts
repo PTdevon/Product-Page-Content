@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
-import { getPfIconOverrides, setPfIconOverride, deletePfIconOverride } from "@/lib/pf-icon-overrides-store";
 import { getLibraryEdits } from "@/lib/library-edits-store";
+import { getPfLibrary, getPfPhraseRows, savePhraseIcon, findPhraseIdByText } from "@/lib/pf-store";
 import wctData from "@/data/why-choose-this.json";
-import pfData from "@/data/perfect-for.json";
-import type { WhyChooseThisEntry, PerfectForEntry } from "@/lib/types";
+import type { WhyChooseThisEntry } from "@/lib/types";
 
 const wctLibrary = wctData as WhyChooseThisEntry[];
-const pfLibrary = pfData as PerfectForEntry[];
 
 export async function GET(req: NextRequest) {
   const authError = await requireAuth(req);
@@ -19,11 +17,11 @@ export async function GET(req: NextRequest) {
   const productStyle = searchParams.get("productStyle") ?? "";
   const category = searchParams.get("category") ?? "";
   const search = (searchParams.get("search") ?? "").toLowerCase();
+  const format = searchParams.get("format") ?? "flat";
 
   const libraryEdits = await getLibraryEdits();
 
   if (type === "why") {
-    // Merge base library with edits: override matching entries, append new ones
     const editsMap = libraryEdits.wct;
     const base: WhyChooseThisEntry[] = wctLibrary.map((e) =>
       editsMap[e.id] ? { ...e, text: editsMap[e.id].text, subtext: editsMap[e.id].subtext } : e
@@ -40,38 +38,31 @@ export async function GET(req: NextRequest) {
       e.text.toLowerCase().includes(search) || e.subtext.toLowerCase().includes(search)
     );
 
-    // Attach edit metadata so the UI can show edit/push state
     const withMeta = results.map((e) => ({ ...e, _edit: editsMap[e.id] ?? null }));
     return NextResponse.json({ entries: withMeta, total: withMeta.length });
   } else {
-    const editsMap = libraryEdits.pf;
-    const iconOverrides = await getPfIconOverrides();
+    // Perfect For — two response formats
+    if (format === "phrases") {
+      // Phrase-centric view for the library management UI
+      const rows = await getPfPhraseRows({
+        productType: productType || undefined,
+        productStyle: productStyle || undefined,
+        category: category || undefined,
+        search: search || undefined,
+      });
+      return NextResponse.json({ phrases: rows, total: rows.length });
+    } else {
+      // Flat view for SwapModal and other consumers
+      let results = await getPfLibrary();
+      if (productType) results = results.filter((e) => e.productType === productType || e.productType === "ALL");
+      if (productStyle) results = results.filter((e) => e.productStyle === productStyle || e.productStyle === "ALL");
+      if (category) results = results.filter((e) => e.category === category);
+      if (search) results = results.filter((e) => e.phrase.toLowerCase().includes(search));
 
-    const base: PerfectForEntry[] = pfLibrary.map((e) => {
-      const edit = editsMap[e.id];
-      return {
-        ...e,
-        phrase: edit ? edit.phrase : e.phrase,
-        icon: iconOverrides[e.id] ?? (edit ? edit.icon : e.icon),
-      };
-    });
-    const newEntries: PerfectForEntry[] = Object.values(editsMap)
-      .filter((e) => e.isNew)
-      .map((e) => ({
-        id: e.id, productType: e.productType, productStyle: e.productStyle,
-        category: e.category as PerfectForEntry["category"], phrase: e.phrase,
-        icon: e.icon, timeSensitive: e.timeSensitive as PerfectForEntry["timeSensitive"],
-        filterByInterest: e.filterByInterest, applicabilityCount: e.applicabilityCount,
-      }));
-
-    let results = [...base, ...newEntries];
-    if (productType) results = results.filter((e) => e.productType === productType || e.productType === "ALL");
-    if (productStyle) results = results.filter((e) => e.productStyle === productStyle || e.productStyle === "ALL");
-    if (category) results = results.filter((e) => e.category === category);
-    if (search) results = results.filter((e) => e.phrase.toLowerCase().includes(search));
-
-    const withMeta = results.map((e) => ({ ...e, _edit: editsMap[e.id] ?? null }));
-    return NextResponse.json({ entries: withMeta, total: withMeta.length });
+      const pfPhraseEdits = libraryEdits.pfPhrases;
+      const withMeta = results.map((e) => ({ ...e, _edit: pfPhraseEdits[e.phraseId] ?? null }));
+      return NextResponse.json({ entries: withMeta, total: withMeta.length });
+    }
   }
 }
 
@@ -79,13 +70,24 @@ export async function PATCH(req: NextRequest) {
   const authError = await requireAuth(req);
   if (authError) return authError;
 
-  const { id, icon } = await req.json() as { id: string; icon: string | null };
-  if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 });
+  const { phraseId, phrase: phraseText, icon } = await req.json() as {
+    phraseId?: string;
+    phrase?: string;
+    icon: string | null;
+  };
 
-  if (icon === null) {
-    await deletePfIconOverride(id);
-  } else {
-    await setPfIconOverride(id, icon);
+  // Resolve phraseId — can be passed directly or looked up by phrase text
+  let resolvedPhraseId = phraseId;
+  if (!resolvedPhraseId && phraseText) {
+    resolvedPhraseId = await findPhraseIdByText(phraseText) ?? undefined;
+  }
+
+  if (!resolvedPhraseId) {
+    return NextResponse.json({ error: "phraseId or phrase required" }, { status: 400 });
+  }
+
+  if (icon !== null && icon !== undefined) {
+    await savePhraseIcon(resolvedPhraseId, icon);
   }
 
   return NextResponse.json({ ok: true });

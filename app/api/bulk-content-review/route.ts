@@ -6,11 +6,10 @@ import { generateProductSummary } from "@/lib/generate-summary";
 import { getSettings } from "@/lib/settings-store";
 import { getLibraryEdits } from "@/lib/library-edits-store";
 import wctData from "@/data/why-choose-this.json";
-import pfData from "@/data/perfect-for.json";
-import type { WhyChooseThisEntry, PerfectForEntry } from "@/lib/types";
+import { getPfLibrary } from "@/lib/pf-store";
+import type { WhyChooseThisEntry } from "@/lib/types";
 
 const wctBase = wctData as WhyChooseThisEntry[];
-const pfBase  = pfData  as PerfectForEntry[];
 
 export async function POST(req: NextRequest) {
   const authError = await requireAuth(req);
@@ -22,27 +21,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "No products" }, { status: 400 });
   }
 
-  const [settings, libraryEdits] = await Promise.all([getSettings(), getLibraryEdits()]);
+  const [settings, libraryEdits, pfLibrary] = await Promise.all([getSettings(), getLibraryEdits(), getPfLibrary()]);
 
-  // Merge base libraries with custom edits
   const wctEditsMap = libraryEdits.wct;
-  const pfEditsMap  = libraryEdits.pf;
-
   const wctLibrary: WhyChooseThisEntry[] = [
     ...wctBase.map((e) => wctEditsMap[e.id] ? { ...e, text: wctEditsMap[e.id].text, subtext: wctEditsMap[e.id].subtext } : e),
     ...Object.values(wctEditsMap).filter((e) => e.isNew).map((e) => ({
       id: e.id, productType: e.productType, productStyle: e.productStyle,
       category: e.category as WhyChooseThisEntry["category"], text: e.text, subtext: e.subtext,
-    })),
-  ];
-
-  const pfLibrary: PerfectForEntry[] = [
-    ...pfBase.map((e) => pfEditsMap[e.id] ? { ...e, phrase: pfEditsMap[e.id].phrase, icon: pfEditsMap[e.id].icon, timeSensitive: pfEditsMap[e.id].timeSensitive as PerfectForEntry["timeSensitive"] } : e),
-    ...Object.values(pfEditsMap).filter((e) => e.isNew).map((e) => ({
-      id: e.id, productType: e.productType, productStyle: e.productStyle,
-      category: e.category as PerfectForEntry["category"], phrase: e.phrase, icon: e.icon,
-      timeSensitive: e.timeSensitive as PerfectForEntry["timeSensitive"],
-      filterByInterest: e.filterByInterest, applicabilityCount: e.applicabilityCount,
     })),
   ];
 

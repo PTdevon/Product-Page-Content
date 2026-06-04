@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Nav from "@/components/Nav";
+import { Tooltip } from "@/components/Tooltip";
 
 type Taxonomy = Record<string, string[]>;
 
@@ -146,7 +147,7 @@ export default function ProductTypesPage() {
 
   return (
     <div className="flex flex-col h-screen">
-      <Nav active="product-types" />
+      <Nav active="product-types" helpText={"Set up your product taxonomy — the Types and Styles used to classify products.\nThese control which library content is suggested when generating product copy.\nTypes and Styles can only be deleted when no products are using them."} />
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto px-6 py-8">
 
@@ -211,12 +212,14 @@ export default function ProductTypesPage() {
                       >
                         Edit
                       </button>
-                      <button
-                        onClick={() => confirmDeleteType(type)}
-                        className="text-xs text-red-400 hover:text-red-600"
-                      >
-                        Delete
-                      </button>
+                      <Tooltip content="Remove this product type. You'll be shown how many products use it — it can only be deleted when none do.">
+                        <button
+                          onClick={() => confirmDeleteType(type)}
+                          className="text-xs text-red-400 hover:text-red-600"
+                        >
+                          Delete
+                        </button>
+                      </Tooltip>
                     </>
                   )}
                 </div>
@@ -246,13 +249,15 @@ export default function ProductTypesPage() {
                           >
                             {style}
                           </button>
-                          <button
-                            onClick={() => confirmDeleteStyle(type, style)}
-                            className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity leading-none"
-                            title="Delete style"
-                          >
-                            ×
-                          </button>
+                          <Tooltip content="Remove this style. You'll be shown how many products use it — it can only be deleted when none do.">
+                            <button
+                              onClick={() => confirmDeleteStyle(type, style)}
+                              className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity leading-none"
+                              title="Delete style"
+                            >
+                              ×
+                            </button>
+                          </Tooltip>
                         </>
                       )}
                     </span>
@@ -274,12 +279,14 @@ export default function ProductTypesPage() {
                       <button onClick={() => setAddingStyleFor(null)} className="text-xs text-gray-400 hover:underline">Cancel</button>
                     </span>
                   ) : (
-                    <button
-                      onClick={() => { setAddingStyleFor(type); setNewStyleName(""); }}
-                      className="text-xs text-gray-400 hover:text-blue-600 px-1"
-                    >
-                      + Add Style
-                    </button>
+                    <Tooltip content="Add a new style option to this type. You'll be prompted to create library content for it.">
+                      <button
+                        onClick={() => { setAddingStyleFor(type); setNewStyleName(""); }}
+                        className="text-xs text-gray-400 hover:text-blue-600 px-1"
+                      >
+                        + Add Style
+                      </button>
+                    </Tooltip>
                   )}
                 </div>
               </div>

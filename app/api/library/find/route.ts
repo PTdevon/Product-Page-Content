@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { shopifyGraphQL } from "@/lib/shopify";
 import { getLibraryEdits } from "@/lib/library-edits-store";
+import { findPhraseForEntry } from "@/lib/pf-store";
 
 const SCAN_QUERY = `
   query ScanProducts($first: Int!, $after: String) {
@@ -46,17 +47,24 @@ export async function POST(req: NextRequest) {
   const authError = await requireAuth(req);
   if (authError) return authError;
 
-  const { type, id } = await req.json() as { type: "wct" | "pf"; id: string };
+  const body = await req.json() as {
+    type: "wct" | "pf" | "pf-scoped";
+    id: string;
+    // pf-scoped: find by raw phrase text, optionally filtered by type/style
+    phraseText?: string;
+    filterType?: string;
+    filterStyle?: string;
+  };
+  const { type, id } = body;
 
   const edits = await getLibraryEdits();
-  const entry = type === "wct" ? edits.wct[id] : edits.pf[id];
-  if (!entry) return NextResponse.json({ error: "Entry not found" }, { status: 404 });
-
   const matches: { id: string; title: string }[] = [];
   let cursor: string | null = null;
 
   if (type === "wct") {
     const wctEntry = edits.wct[id];
+    if (!wctEntry) return NextResponse.json({ error: "Entry not found" }, { status: 404 });
+
     const oldFormatted = wctEntry.searchFormatted;
     if (!oldFormatted) return NextResponse.json({ products: [] });
 
@@ -79,17 +87,48 @@ export async function POST(req: NextRequest) {
       if (!data.products.pageInfo.hasNextPage) break;
       cursor = data.products.edges[data.products.edges.length - 1]?.cursor ?? null;
     }
+  } else if (type === "pf-scoped") {
+    // Find by raw phrase text, optionally filtered to a specific type/style
+    const phraseText = body.phraseText;
+    if (!phraseText) return NextResponse.json({ products: [] });
+    const filterType = body.filterType;
+    const filterStyle = body.filterStyle;
+
+    while (true) {
+      const data: ScanResult = await shopifyGraphQL<ScanResult>(SCAN_QUERY, { first: 250, after: cursor });
+
+      for (const { node } of data.products.edges) {
+        const nodeType = node.typePt?.value ?? "";
+        const nodeStyle = node.stylePt?.value ?? "";
+        if (filterType && nodeType !== filterType) continue;
+        if (filterStyle && filterStyle !== "ALL") {
+          if (!nodeStyle.split(",").map((s: string) => s.trim()).includes(filterStyle)) continue;
+        }
+        const bullets = [node.pf1?.value ?? "", node.pf2?.value ?? "", node.pf3?.value ?? "", node.pf4?.value ?? ""];
+        if (bullets.some((b) => b === phraseText)) {
+          matches.push({ id: node.id, title: node.title });
+        }
+      }
+
+      if (!data.products.pageInfo.hasNextPage) break;
+      cursor = data.products.edges[data.products.edges.length - 1]?.cursor ?? null;
+    }
   } else {
-    const pfEntry = edits.pf[id];
-    const oldPhrase = pfEntry.searchPhrase;
+    // PF: id is a phraseId
+    const found = await findPhraseForEntry(id);
+    if (!found) return NextResponse.json({ error: "Phrase not found" }, { status: 404 });
+
+    const oldPhrase = found.edit?.searchPhrase;
     if (!oldPhrase) return NextResponse.json({ products: [] });
+
+    const newPhrase = found.phrase.phrase;
 
     while (true) {
       const data: ScanResult = await shopifyGraphQL<ScanResult>(SCAN_QUERY, { first: 250, after: cursor });
 
       for (const { node } of data.products.edges) {
         const bullets = [node.pf1?.value ?? "", node.pf2?.value ?? "", node.pf3?.value ?? "", node.pf4?.value ?? ""];
-        if (bullets.some((b) => b === oldPhrase) && oldPhrase !== pfEntry.phrase) {
+        if (bullets.some((b) => b === oldPhrase) && oldPhrase !== newPhrase) {
           matches.push({ id: node.id, title: node.title });
         }
       }

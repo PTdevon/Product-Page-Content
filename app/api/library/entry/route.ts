@@ -1,16 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import {
-  upsertWCTEdit, upsertPFEdit,
-  deleteWCTEdit, deletePFEdit,
-  type WCTEdit, type PFEdit,
+  upsertWCTEdit, deleteWCTEdit,
+  type WCTEdit,
 } from "@/lib/library-edits-store";
+import {
+  createPhrase, savePhraseEdit, addApplicability, removeApplicability, deletePhrase,
+  findPhraseForEntry,
+} from "@/lib/pf-store";
 import wctData from "@/data/why-choose-this.json";
-import pfData from "@/data/perfect-for.json";
-import type { WhyChooseThisEntry, PerfectForEntry } from "@/lib/types";
+import type { WhyChooseThisEntry, PFPhrase } from "@/lib/types";
 
 const wctLibrary = wctData as WhyChooseThisEntry[];
-const pfLibrary = pfData as PerfectForEntry[];
 
 function formatWCT(text: string, subtext: string) {
   return `<strong>${text}</strong> ${subtext}`;
@@ -22,7 +23,22 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json() as {
     type: "wct" | "pf";
-    entry: Partial<WCTEdit & PFEdit> & { id?: string };
+    entry: Partial<WCTEdit> & {
+      id?: string;
+      // PF phrase fields
+      phrase?: string;
+      icon?: string;
+      category?: string;
+      timeSensitive?: string | null;
+      filterByInterest?: boolean;
+      searchPhrase?: string;
+      // New phrase creation: list of type/style pairs
+      typeStylePairs?: { type: string; style: string }[];
+      // Adding applicability to existing phrase
+      phraseId?: string;
+      productType?: string;
+      productStyle?: string;
+    };
   };
 
   try {
@@ -38,30 +54,57 @@ export async function POST(req: NextRequest) {
         searchFormatted = (body.entry as WCTEdit).searchFormatted || (base ? formatWCT(base.text, base.subtext) : "");
       }
 
-      await upsertWCTEdit({ id: entryId, productType, productStyle, category, text, subtext, searchFormatted, isNew: !!isNew });
+      await upsertWCTEdit({ id: entryId, productType: productType!, productStyle: productStyle!, category: category!, text: text!, subtext: subtext!, searchFormatted, isNew: !!isNew });
       return NextResponse.json({ ok: true, id: entryId });
     }
 
     if (body.type === "pf") {
-      const { id, productType, productStyle, category, phrase, icon, timeSensitive, filterByInterest, applicabilityCount } = body.entry as PFEdit;
+      const { id, phrase, icon, category, timeSensitive, filterByInterest, searchPhrase, phraseId, productType, productStyle, typeStylePairs } = body.entry;
 
-      const isNew = !id || id.startsWith("pf-custom-");
-      const entryId = id || `pf-custom-${Date.now()}`;
+      if (!id && !phraseId) {
+        // ── CREATE NEW PHRASE + applicabilities ───────────────────────────────
+        if (!phrase?.trim()) return NextResponse.json({ error: "phrase required" }, { status: 400 });
+        if (!category) return NextResponse.json({ error: "category required" }, { status: 400 });
+        if (!typeStylePairs?.length) return NextResponse.json({ error: "at least one type/style required" }, { status: 400 });
 
-      let searchPhrase = "";
-      if (!isNew) {
-        const base = pfLibrary.find((e) => e.id === entryId);
-        searchPhrase = (body.entry as PFEdit).searchPhrase || (base?.phrase ?? "");
+        const newPhraseId = await createPhrase(
+          phrase.trim(),
+          icon ?? "",
+          category as PFPhrase["category"],
+          (timeSensitive ?? null) as PFPhrase["timeSensitive"],
+          filterByInterest ?? false,
+          typeStylePairs
+        );
+        return NextResponse.json({ ok: true, phraseId: newPhraseId });
       }
 
-      await upsertPFEdit({
-        id: entryId, productType, productStyle, category, phrase,
-        icon: icon ?? "", timeSensitive: timeSensitive ?? null,
-        filterByInterest: filterByInterest ?? false,
-        applicabilityCount: applicabilityCount ?? 0,
-        searchPhrase, isNew: !!isNew,
+      if (phraseId && !id) {
+        // ── ADD APPLICABILITY to existing phrase ──────────────────────────────
+        if (!productType) return NextResponse.json({ error: "productType required" }, { status: 400 });
+        const appId = await addApplicability(phraseId, productType, productStyle ?? "ALL");
+        return NextResponse.json({ ok: true, id: appId });
+      }
+
+      // ── EDIT EXISTING PHRASE definition ────────────────────────────────────
+      // id here is a phraseId (from the phrase row)
+      const resolvedPhraseId = id!;
+      const found = await findPhraseForEntry(resolvedPhraseId);
+      if (!found) return NextResponse.json({ error: "phrase not found" }, { status: 404 });
+
+      const currentPhrase = found.phrase;
+      const currentEdit = found.edit;
+
+      await savePhraseEdit(resolvedPhraseId, {
+        phrase: phrase ?? currentPhrase.phrase,
+        icon: icon ?? currentEdit?.icon ?? currentPhrase.icon,
+        searchPhrase: searchPhrase ?? currentEdit?.searchPhrase ?? currentPhrase.phrase,
+        isNew: currentEdit?.isNew ?? false,
+        ...(category !== undefined && { category }),
+        ...(timeSensitive !== undefined && { timeSensitive }),
+        ...(filterByInterest !== undefined && { filterByInterest }),
       });
-      return NextResponse.json({ ok: true, id: entryId });
+
+      return NextResponse.json({ ok: true, id: resolvedPhraseId });
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
@@ -75,9 +118,15 @@ export async function DELETE(req: NextRequest) {
   const authError = await requireAuth(req);
   if (authError) return authError;
 
-  const { type, id } = await req.json() as { type: "wct" | "pf"; id: string };
-  if (type === "wct") await deleteWCTEdit(id);
-  else await deletePFEdit(id);
+  const { type, id } = await req.json() as { type: "wct" | "pf-phrase" | "pf-applicability"; id: string };
+
+  if (type === "wct") {
+    await deleteWCTEdit(id);
+  } else if (type === "pf-applicability") {
+    await removeApplicability(id);
+  } else if (type === "pf-phrase") {
+    await deletePhrase(id);
+  }
 
   return NextResponse.json({ ok: true });
 }

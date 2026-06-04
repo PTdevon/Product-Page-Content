@@ -217,7 +217,7 @@ export default function KeywordsPage() {
 
   return (
     <div className="flex flex-col min-h-screen">
-      <Nav active="perfect-for" subActive="keywords" />
+      <Nav active="perfect-for" subActive="keywords" helpText={"Manage the interest phrases used to personalise Perfect For suggestions.\nThese help the AI match the right phrases to each product."} />
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-5xl mx-auto px-6 py-8">
 

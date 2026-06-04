@@ -55,7 +55,7 @@ export default function SettingsPage() {
 
   return (
     <div className="flex flex-col min-h-screen">
-      <Nav active="perfect-for" subActive="seasonal" />
+      <Nav active="perfect-for" subActive="seasonal" helpText={"Set the date windows for seasonal occasions like Mother's Day and Valentine's Day.\nWhy Choose This and Perfect For entries marked as seasonal will only appear on products during these dates."} />
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto px-6 py-8">
 

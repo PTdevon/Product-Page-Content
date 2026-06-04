@@ -153,8 +153,17 @@ export function assignPerfectFor(
     return typeMatch && styleMatch;
   });
 
-  // Step 2: shuffle candidates so within-tier selection varies across runs
-  const candidates = [...filtered];
+  // Step 2a: deduplicate by phrase, keeping the most specific entry (non-ALL style wins)
+  const phraseMap = new Map<string, PerfectForEntry>();
+  for (const entry of filtered) {
+    const existing = phraseMap.get(entry.phrase);
+    if (!existing || (entry.productStyle !== "ALL" && existing.productStyle === "ALL")) {
+      phraseMap.set(entry.phrase, entry);
+    }
+  }
+
+  // Step 2b: shuffle candidates so within-tier selection varies across runs
+  const candidates = [...phraseMap.values()];
   for (let i = candidates.length - 1; i > 0; i--) {
     const j = Math.floor(rand() * (i + 1));
     [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
@@ -170,16 +179,28 @@ export function assignPerfectFor(
     return order; // preserve shuffle order within tier (no secondary sort)
   });
 
-  // Step 3: pick 4 with category diversity
+  // Step 3: pick 4 with category diversity and icon diversity
   const selected: PerfectForEntry[] = [];
   const categoryCounts: Record<string, number> = { Occasion: 0, Person: 0, Context: 0 };
+  const selectedIcons = new Set<string>();
   const remaining = [...sorted];
 
   while (selected.length < 4 && remaining.length > 0) {
     const minCount = Math.min(...Object.values(categoryCounts));
-    const idx = remaining.findIndex((e) => (categoryCounts[e.category] ?? 0) === minCount);
+
+    // Prefer: min-count category + new icon
+    let idx = remaining.findIndex(
+      (e) => (categoryCounts[e.category] ?? 0) === minCount && (!e.icon || !selectedIcons.has(e.icon))
+    );
+
+    // Fall back: min-count category, accepting a duplicate icon
+    if (idx < 0) {
+      idx = remaining.findIndex((e) => (categoryCounts[e.category] ?? 0) === minCount);
+    }
+
     const pick = idx >= 0 ? remaining.splice(idx, 1)[0] : remaining.shift()!;
     selected.push(pick);
+    if (pick.icon) selectedIcons.add(pick.icon);
     categoryCounts[pick.category] = (categoryCounts[pick.category] ?? 0) + 1;
   }
 

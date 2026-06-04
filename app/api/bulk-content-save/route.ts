@@ -2,9 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { setProductMetafields } from "@/lib/metafields";
 import { assignSeasonalPhrases } from "@/lib/assignment-engine";
-import { getLibraryEdits } from "@/lib/library-edits-store";
-import pfBase from "@/data/perfect-for.json";
-import type { PerfectForEntry } from "@/lib/types";
+import { getPfLibrary } from "@/lib/pf-store";
 
 interface ContentRowSave {
   productId: string;
@@ -22,17 +20,7 @@ export async function POST(req: NextRequest) {
 
   const { rows } = await req.json() as { rows: ContentRowSave[] };
 
-  const libraryEdits = await getLibraryEdits();
-  const pfEditsMap = libraryEdits.pf;
-  const pfLibrary: PerfectForEntry[] = [
-    ...(pfBase as PerfectForEntry[]).map((e) => pfEditsMap[e.id] ? { ...e, phrase: pfEditsMap[e.id].phrase, icon: pfEditsMap[e.id].icon, timeSensitive: pfEditsMap[e.id].timeSensitive as PerfectForEntry["timeSensitive"] } : e),
-    ...Object.values(pfEditsMap).filter((e) => e.isNew).map((e) => ({
-      id: e.id, productType: e.productType, productStyle: e.productStyle,
-      category: e.category as PerfectForEntry["category"], phrase: e.phrase, icon: e.icon,
-      timeSensitive: e.timeSensitive as PerfectForEntry["timeSensitive"],
-      filterByInterest: e.filterByInterest, applicabilityCount: e.applicabilityCount,
-    })),
-  ];
+  const pfLibrary = await getPfLibrary();
 
   let saved = 0;
   let failed = 0;

@@ -7,8 +7,29 @@ export interface WhyChooseThisEntry {
   subtext: string;
 }
 
-export interface PerfectForEntry {
+// Phrase definition — one per unique phrase text
+export interface PFPhrase {
   id: string;
+  phrase: string;
+  icon: string;
+  category: "Occasion" | "Person" | "Context";
+  timeSensitive: "mothers-day" | "fathers-day" | "valentines-day" | null;
+  filterByInterest: boolean;
+}
+
+// Applicability row — one per phrase × product-type/style combination
+export interface PFApplicability {
+  id: string;
+  phraseId: string;
+  productType: string;
+  productStyle: string;
+  applicabilityCount: number;
+}
+
+// Flat joined view — used everywhere outside the library management layer
+export interface PerfectForEntry {
+  id: string;       // applicability ID
+  phraseId: string;
   productType: string;
   productStyle: string;
   category: "Occasion" | "Person" | "Context";

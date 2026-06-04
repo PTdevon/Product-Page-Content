@@ -4,11 +4,10 @@ import { assignWhyChooseThis, assignPerfectFor } from "@/lib/assignment-engine";
 import { getSettings } from "@/lib/settings-store";
 import { getProductWithMetafields } from "@/lib/metafields";
 import wctData from "@/data/why-choose-this.json";
-import pfData from "@/data/perfect-for.json";
+import { getPfLibrary } from "@/lib/pf-store";
 import type { WhyChooseThisEntry, PerfectForEntry } from "@/lib/types";
 
 const wctLibrary = wctData as WhyChooseThisEntry[];
-const pfLibrary = pfData as PerfectForEntry[];
 
 export async function POST(req: NextRequest) {
   const authError = await requireAuth(req);
@@ -30,7 +29,7 @@ export async function POST(req: NextRequest) {
   }
 
   const ctx = { title, descriptionText, productType, productStyles: styles };
-  const settings = await getSettings();
+  const [settings, pfLibrary] = await Promise.all([getSettings(), getPfLibrary()]);
 
   const wct = assignWhyChooseThis(ctx, wctLibrary);
   const pf = assignPerfectFor(ctx, pfLibrary, settings.dateRanges, new Date(), undefined, undefined, settings.interestKeywords);
@@ -42,7 +41,7 @@ export async function POST(req: NextRequest) {
     ).length
   );
   const wctHasAlternatives = wctSlotCounts.some((c) => c > 1);
-  const pfSwapCount = pfLibrary.filter((e) => {
+  const pfSwapCount = pfLibrary.filter((e: PerfectForEntry) => {
     if (e.timeSensitive) return false;
     const typeMatch = e.productType === "ALL" || e.productType === ctx.productType;
     const styleMatch = e.productStyle === "ALL" || ctx.productStyles.includes(e.productStyle);

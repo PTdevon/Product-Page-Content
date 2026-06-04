@@ -6,11 +6,10 @@ import { getSettings } from "@/lib/settings-store";
 import { resolveIconForMetafield } from "@/lib/icons";
 import { generateProductSummary } from "@/lib/generate-summary";
 import wctData from "@/data/why-choose-this.json";
-import pfData from "@/data/perfect-for.json";
-import type { WhyChooseThisEntry, PerfectForEntry } from "@/lib/types";
+import { getPfLibrary } from "@/lib/pf-store";
+import type { WhyChooseThisEntry } from "@/lib/types";
 
 const wctLibrary = wctData as WhyChooseThisEntry[];
-const pfLibrary = pfData as PerfectForEntry[];
 
 export async function POST(req: NextRequest) {
   const authError = await requireAuth(req);
@@ -28,7 +27,7 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const settings = await getSettings();
+  const [settings, pfLibrary] = await Promise.all([getSettings(), getPfLibrary()]);
   const today = new Date();
   const encoder = new TextEncoder();
 

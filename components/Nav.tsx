@@ -1,4 +1,6 @@
+"use client";
 import Link from "next/link";
+import { HelpTooltip } from "@/components/Tooltip";
 
 const MAIN_LINKS = [
   { href: "/products",    label: "Products",         key: "products" },
@@ -16,12 +18,11 @@ const PF_SUB_LINKS = [
   { href: "/settings",             label: "Seasonal Settings",  key: "seasonal" },
 ];
 
-export default function Nav({ active, subActive }: { active: string; subActive?: string }) {
+export default function Nav({ active, subActive, helpText }: { active: string; subActive?: string; helpText?: string }) {
   return (
     <div className="shrink-0">
       <nav className="bg-white border-b border-gray-200 px-6 flex items-end gap-1">
-        <span className="font-semibold text-gray-900 mr-6 pb-3 text-sm">Product Page Content</span>
-        {MAIN_LINKS.map(({ href, label, key }) => (
+{MAIN_LINKS.map(({ href, label, key }) => (
           <Link
             key={key}
             href={href}
@@ -34,6 +35,13 @@ export default function Nav({ active, subActive }: { active: string; subActive?:
             {label}
           </Link>
         ))}
+        {helpText && (
+          <HelpTooltip content={helpText}>
+            <button className="ml-auto mb-2.5 w-5 h-5 rounded-full border border-gray-500 text-gray-600 text-xs font-medium hover:border-gray-700 hover:text-gray-800 flex items-center justify-center shrink-0">
+              ?
+            </button>
+          </HelpTooltip>
+        )}
       </nav>
       {active === "perfect-for" && (
         <nav className="bg-gray-50 border-b border-gray-200 px-6 flex items-end gap-1">

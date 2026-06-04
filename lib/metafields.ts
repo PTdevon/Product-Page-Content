@@ -132,7 +132,7 @@ export async function setProductMetafields(
 ): Promise<void> {
   const inputs: MetafieldInput[] = [];
   const add = (ns: string, key: string, value: string, type: string) => {
-    if (value !== undefined) inputs.push({ ownerId: productGid, namespace: ns, key, value, type });
+    if (value !== undefined && value !== "") inputs.push({ ownerId: productGid, namespace: ns, key, value, type });
   };
 
   if (data.productSummary !== undefined) add("product", "product_summary", data.productSummary, "multi_line_text_field");

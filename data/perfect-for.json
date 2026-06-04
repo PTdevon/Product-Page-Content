@@ -902,17 +902,6 @@
     "icon": "star"
   },
   {
-    "id": "pf-086",
-    "productType": "Home",
-    "productStyle": "Bold/Colourful",
-    "category": "Occasion",
-    "phrase": "Summer entertaining",
-    "filterByInterest": false,
-    "timeSensitive": null,
-    "applicabilityCount": 1,
-    "icon": "dining"
-  },
-  {
     "id": "pf-087",
     "productType": "Home",
     "productStyle": "Bold/Colourful",
