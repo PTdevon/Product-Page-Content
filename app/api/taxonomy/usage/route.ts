@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
 
   try {
     while (hasMore) {
-      const data = await shopifyGraphQL<Result>(QUERY, { first: 250, after: cursor });
+      const data: Result = await shopifyGraphQL<Result>(QUERY, { first: 250, after: cursor });
       for (const { node } of data.products.edges) {
         const nodeType  = node.productTypePt?.value  ?? "";
         const nodeStyle = node.productStylePt?.value ?? "";
