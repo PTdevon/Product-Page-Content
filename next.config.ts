@@ -18,7 +18,7 @@ const nextConfig: NextConfig = {
           },
           {
             key: "Content-Security-Policy",
-            value: `frame-ancestors https://admin.shopify.com https://${process.env.SHOPIFY_STORE_DOMAIN ?? "penelopetom-office.myshopify.com"}`,
+            value: `frame-ancestors https://admin.shopify.com https://${(process.env.SHOPIFY_STORE_DOMAIN ?? "penelopetom-office.myshopify.com").trim()}`,
           },
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
