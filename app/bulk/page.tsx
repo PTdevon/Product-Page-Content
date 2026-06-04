@@ -99,6 +99,8 @@ export default function BulkPage() {
   const [contentSaveResult, setContentSaveResult] = useState<{ saved: number; failed: number } | null>(null);
   const [wctEditing, setWctEditing] = useState<{ productId: string; slotIndex: number; text: string; subtext: string } | null>(null);
   const [bulkSwapModal, setBulkSwapModal] = useState<{ productId: string; type: "why" | "perfect"; slotIndex: number } | null>(null);
+  const [pfAvailability, setPfAvailability] = useState<Record<string, boolean>>({});
+  const [wctAvailability, setWctAvailability] = useState<Record<string, boolean>>({});
 
   // Classify workflow state
   const [classifyRows, setClassifyRows] = useState<ClassifyRow[]>([]);
@@ -114,6 +116,76 @@ export default function BulkPage() {
 
   // Fetch error
   const [fetchError, setFetchError] = useState<string | null>(null);
+
+  // Check PF and WCT library availability when content rows load.
+  useEffect(() => {
+    if (contentPhase !== "review" || contentRows.length === 0) return;
+    const eligible = contentRows.filter((row) => row.source !== "needs-classify");
+
+    // PF: per-product, hide button if all library entries are already selected
+    const pfPromise = Promise.all(
+      eligible.map(async (row) => {
+        const styles = row.productStylePt ? row.productStylePt.split(",").map((s) => s.trim()).filter(Boolean) : [];
+        const stylesToFetch = styles.length > 0 ? styles : [""];
+        const selected = new Set(row.pfBullets.filter(Boolean));
+        const results = await Promise.all(
+          stylesToFetch.map((style) => {
+            const params = new URLSearchParams({ type: "perfect" });
+            if (row.productTypePt) params.set("productType", row.productTypePt);
+            if (style) params.set("productStyle", style);
+            return fetch(`/api/library?${params}`).then((r) => r.json()).catch(() => ({ entries: [] }));
+          })
+        );
+        const seen = new Set<string>();
+        const hasUnselected = results.some((d) =>
+          (d.entries ?? []).some((e: { phrase: string; timeSensitive?: boolean }) => {
+            if (e.timeSensitive || seen.has(e.phrase)) return false;
+            seen.add(e.phrase);
+            return !selected.has(e.phrase);
+          })
+        );
+        return [row.productId, hasUnselected] as [string, boolean];
+      })
+    );
+
+    // WCT: deduplicate checks by type+styles+category, then map to productId|slotIndex
+    const wctCombos = new Map<string, { productType: string; productStyles: string[]; category: string }>();
+    eligible.forEach((row) => {
+      const styles = row.productStylePt ? row.productStylePt.split(",").map((s) => s.trim()).filter(Boolean) : [];
+      WCT_LABELS.forEach((category) => {
+        const key = `${row.productTypePt}|${styles.join("|")}|${category}`;
+        if (!wctCombos.has(key)) wctCombos.set(key, { productType: row.productTypePt, productStyles: styles, category });
+      });
+    });
+    const wctPromise = Promise.all(
+      Array.from(wctCombos.entries()).map(async ([key, { productType, productStyles, category }]) => {
+        const stylesToFetch = productStyles.length > 0 ? productStyles : [""];
+        const results = await Promise.all(
+          stylesToFetch.map((style) => {
+            const params = new URLSearchParams({ type: "why", category });
+            if (productType) params.set("productType", productType);
+            if (style) params.set("productStyle", style);
+            return fetch(`/api/library?${params}`).then((r) => r.json()).catch(() => ({ entries: [] }));
+          })
+        );
+        const hasEntries = results.some((d) => (d.entries ?? []).length > 0);
+        return [key, hasEntries] as [string, boolean];
+      })
+    );
+
+    Promise.all([pfPromise, wctPromise]).then(([pfPairs, wctComboResults]) => {
+      setPfAvailability(Object.fromEntries(pfPairs));
+      const wctComboMap = Object.fromEntries(wctComboResults);
+      const wctPairs = eligible.flatMap((row) => {
+        const styles = row.productStylePt ? row.productStylePt.split(",").map((s) => s.trim()).filter(Boolean) : [];
+        return WCT_LABELS.map((category, i) => {
+          const comboKey = `${row.productTypePt}|${styles.join("|")}|${category}`;
+          return [`${row.productId}|${i}`, wctComboMap[comboKey] ?? false] as [string, boolean];
+        });
+      });
+      setWctAvailability(Object.fromEntries(wctPairs));
+    });
+  }, [contentPhase]);
 
   // ── Product fetching ─────────────────────────────────────────────────────
 
@@ -417,6 +489,8 @@ export default function BulkPage() {
       });
       const data = res.ok ? await res.json() : { saved: 0, failed: assignments.length };
       setClassifySaveResult({ saved: data.saved, failed: data.failed });
+      const savedIds = new Set(assignments.map((a) => a.productId));
+      setClassifyRows((prev) => prev.map((r) => savedIds.has(r.productId) ? { ...r, source: "existing", dirty: false } : r));
       setClassifyPhase("saved");
     } catch {
       setClassifyPhase("review");
@@ -569,6 +643,8 @@ export default function BulkPage() {
       });
       const data = res.ok ? await res.json() : { saved: 0, failed: toSave.length };
       setContentSaveResult(data);
+      const savedIds = new Set(toSave.map((r) => r.productId));
+      setContentRows((prev) => prev.map((r) => savedIds.has(r.productId) ? { ...r, source: "existing", dirty: false } : r));
       setContentPhase("saved");
     } catch {
       setContentPhase("review");
@@ -814,7 +890,6 @@ export default function BulkPage() {
                       <tr>
                         <th className="w-12 px-3 py-2"></th>
                         <th className="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wide">Product</th>
-                        <th className="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wide">Existing</th>
                         <th className="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wide">Type</th>
                         <th className="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wide">Style</th>
                         <th className="w-10 px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wide">Skip</th>
@@ -859,13 +934,6 @@ export default function BulkPage() {
                             {row.regenerating && (
                               <span className="mt-0.5 inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-500">Regenerating…</span>
                             )}
-                          </td>
-                          {/* Existing */}
-                          <td className="px-3 py-2 text-gray-400 max-w-[100px]">
-                            {row.existingType
-                              ? <><div>{row.existingType}</div><div>{row.existingStyle}</div></>
-                              : <span>—</span>
-                            }
                           </td>
                           {/* Type dropdown */}
                           <td className="px-3 py-2">
@@ -928,7 +996,7 @@ export default function BulkPage() {
                     onClick={handleCloseClassify}
                     className="px-4 py-2 border border-gray-300 text-sm text-gray-600 rounded hover:bg-gray-50 transition-colors"
                   >
-                    {classifyPhase === "saved" ? "Close and refresh list" : "Cancel"}
+                    {classifyPhase === "saved" ? "Close" : "Cancel"}
                   </button>
                   <div className="flex-1" />
                   {(classifyPhase === "review" || classifyPhase === "streaming") && (
@@ -974,7 +1042,13 @@ export default function BulkPage() {
                         {/* Product header */}
                         <div className="flex items-center gap-3 p-3 border-b border-gray-100">
                           {row.imageUrl ? (
-                            <img src={row.imageUrl} alt="" className="w-10 h-10 object-cover rounded shrink-0" />
+                            <button
+                              onClick={() => setModalImage(row.imageUrl)}
+                              className="block w-10 h-10 rounded overflow-hidden hover:ring-2 hover:ring-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400 transition-shadow shrink-0"
+                              title="Click to enlarge"
+                            >
+                              <img src={row.imageUrl} alt="" className="w-10 h-10 object-cover" />
+                            </button>
                           ) : (
                             <div className="w-10 h-10 bg-gray-100 rounded shrink-0" />
                           )}
@@ -985,7 +1059,7 @@ export default function BulkPage() {
                                 ? <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-600">Needs Type &amp; Style</span>
                                 : row.source === "existing" && !row.dirty
                                   ? <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-700">Existing</span>
-                                  : row.source === "existing" && row.dirty
+                                  : row.dirty
                                     ? <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium bg-orange-100 text-orange-600">Edited - Unsaved</span>
                                     : <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-600">Newly Generated - Unsaved</span>
                               }
@@ -1079,7 +1153,7 @@ export default function BulkPage() {
                                             : <em className="text-gray-400 not-italic">Empty — click to type or use Swap</em>
                                           }
                                         </button>
-                                        {!disabled && (
+                                        {!disabled && wctAvailability[`${row.productId}|${i}`] && (
                                           <button
                                             onClick={() => setBulkSwapModal({ productId: row.productId, type: "why", slotIndex: i })}
                                             className="shrink-0 text-[10px] text-gray-400 hover:text-gray-700 border border-gray-200 hover:border-gray-300 px-2 py-0.5 rounded transition-colors"
@@ -1115,7 +1189,7 @@ export default function BulkPage() {
                                     <span className="flex-1 text-sm text-gray-700 truncate">
                                       {phrase || <em className="text-gray-400 not-italic">Empty</em>}
                                     </span>
-                                    {!disabled && (
+                                    {!disabled && pfAvailability[row.productId] && (
                                       <button
                                         onClick={() => setBulkSwapModal({ productId: row.productId, type: "perfect", slotIndex: i })}
                                         className="shrink-0 text-[10px] text-gray-400 hover:text-gray-700 border border-gray-200 hover:border-gray-300 px-2 py-0.5 rounded transition-colors"
@@ -1138,7 +1212,7 @@ export default function BulkPage() {
                       onClick={handleCloseContent}
                       className="px-4 py-2 border border-gray-300 text-sm text-gray-600 rounded hover:bg-gray-50 transition-colors"
                     >
-                      {contentPhase === "saved" ? "Close and refresh list" : "Cancel"}
+                      {contentPhase === "saved" ? "Close" : "Cancel"}
                     </button>
                     <div className="flex-1" />
                     {(contentPhase === "review" || contentPhase === "saving") && (
@@ -1170,6 +1244,7 @@ export default function BulkPage() {
             slotLabel={bulkSwapModal.type === "why" ? WCT_LABELS[bulkSwapModal.slotIndex] : undefined}
             productType={row.productTypePt}
             productStyles={row.productStylePt ? row.productStylePt.split(",").map((s) => s.trim()).filter(Boolean) : []}
+            selectedPhrases={bulkSwapModal.type === "perfect" ? row.pfBullets.filter(Boolean) : []}
             onSelect={handleBulkSwapSelect}
             onClose={() => setBulkSwapModal(null)}
           />

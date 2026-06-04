@@ -39,6 +39,16 @@
       "subtext": "A gift they'll remember",
       "searchFormatted": "",
       "isNew": true
+    },
+    "wct-001": {
+      "id": "wct-001",
+      "productType": "Bags & Purses",
+      "productStyle": "Elegant",
+      "category": "Gift Impact",
+      "text": "The perfect finishing touch",
+      "subtext": "For weddings and special events",
+      "searchFormatted": "<strong>The perfect finishing touch</strong> For weddings and special events",
+      "isNew": false
     }
   },
   "pf": {

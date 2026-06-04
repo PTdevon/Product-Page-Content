@@ -664,6 +664,7 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
           slotLabel={swapModal.type === "why" ? WCT_SLOTS[swapModal.slotIndex].label : undefined}
           productType={productType}
           productStyles={productStyles}
+          selectedPhrases={swapModal.type === "perfect" ? pfSlots.map((s) => s.phrase).filter(Boolean) : []}
           onSelect={handleSwapSelect}
           onClose={() => setSwapModal(null)}
         />

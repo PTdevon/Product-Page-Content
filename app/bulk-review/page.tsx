@@ -22,7 +22,6 @@ interface ContentRow {
   wctBullets: [string, string, string, string];
   pfBullets: [string, string, string, string];
   pfIcons: [string, string, string, string];
-  seasonalOverrides: { mothersDay: boolean; fathersDay: boolean; valentinesDay: boolean };
   skip: boolean;
   regenerating: boolean;
 }
@@ -39,7 +38,6 @@ export default function BulkReviewPage() {
   const [bestseller, setBestseller] = useState(false);
   const [contentFilter, setContentFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
-  const [seasonalFilter, setSeasonalFilter] = useState("");
   const [pageSize, setPageSize] = useState(25);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [totalCount, setTotalCount] = useState<number | null>(null);
@@ -48,7 +46,8 @@ export default function BulkReviewPage() {
 
   const fetchTotalCount = useCallback(async (signal?: AbortSignal) => {
     setTotalCount(null);
-    const params = new URLSearchParams({ status: contentFilter });
+    const params = new URLSearchParams();
+    if (contentFilter) params.set("status", contentFilter);
     if (search) params.set("search", search);
     if (bestseller) params.set("bestseller", "true");
     try {
@@ -61,7 +60,8 @@ export default function BulkReviewPage() {
   const fetchPage = useCallback(async (reset: boolean, signal?: AbortSignal) => {
     setLoading(true);
     if (reset) setFetchError(null);
-    const params = new URLSearchParams({ status: contentFilter });
+    const params = new URLSearchParams();
+    if (contentFilter) params.set("status", contentFilter);
     if (search) params.set("search", search);
     if (bestseller) params.set("bestseller", "true");
     params.set("limit", String(pageSize));
@@ -84,7 +84,12 @@ export default function BulkReviewPage() {
           body: JSON.stringify({ productIds: data.products.map((p) => p.id) }),
           signal,
         });
-        const contentData: { rows: ContentRow[] } = contentRes.ok ? await contentRes.json() : { rows: [] };
+        if (!contentRes.ok) {
+          setFetchError("Failed to load product content — please try refreshing.");
+          setLoading(false);
+          return;
+        }
+        const contentData: { rows: ContentRow[] } = await contentRes.json();
         if (signal?.aborted) return;
         contentData.rows.forEach((r) => {
           if (!originalRows.current.has(r.productId)) {
@@ -106,8 +111,8 @@ export default function BulkReviewPage() {
     } catch (err) {
       if ((err as { name?: string })?.name !== "AbortError") {
         setFetchError("Network error — please check your connection and try again.");
+        setLoading(false);
       }
-      setLoading(false);
     }
   }, [search, bestseller, contentFilter, pageSize]);
 
@@ -125,9 +130,6 @@ export default function BulkReviewPage() {
 
   const filteredRows = rows.filter((r) => {
     if (typeFilter && r.productTypePt !== typeFilter) return false;
-    if (seasonalFilter === "mothersDay"    && !r.seasonalOverrides?.mothersDay)    return false;
-    if (seasonalFilter === "fathersDay"    && !r.seasonalOverrides?.fathersDay)    return false;
-    if (seasonalFilter === "valentinesDay" && !r.seasonalOverrides?.valentinesDay) return false;
     return true;
   });
 
@@ -155,7 +157,6 @@ export default function BulkReviewPage() {
             wctBullets: r.wctBullets,
             pfBullets: r.pfBullets,
             pfIcons: r.pfIcons,
-            seasonalOverrides: r.seasonalOverrides,
           })),
         }),
       });
@@ -210,16 +211,6 @@ export default function BulkReviewPage() {
           ))}
         </select>
         <select
-          value={seasonalFilter}
-          onChange={(e) => setSeasonalFilter(e.target.value)}
-          className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        >
-          <option value="">All occasions</option>
-          <option value="mothersDay">Mother's Day</option>
-          <option value="fathersDay">Father's Day</option>
-          <option value="valentinesDay">Valentine's Day</option>
-        </select>
-        <select
           value={pageSize}
           onChange={(e) => setPageSize(Number(e.target.value))}
           className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -233,8 +224,8 @@ export default function BulkReviewPage() {
           {loading && rows.length === 0
             ? "Loading..."
             : totalCount === null
-              ? `${rows.length}${nextCursor ? "+" : ""} product${rows.length !== 1 ? "s" : ""}`
-              : `${rows.length} of ${totalCount} product${totalCount !== 1 ? "s" : ""}`}
+              ? `${filteredRows.length}${nextCursor ? "+" : ""} product${filteredRows.length !== 1 ? "s" : ""}`
+              : `${filteredRows.length} of ${totalCount} product${totalCount !== 1 ? "s" : ""}`}
         </span>
         <div className="ml-auto flex items-center gap-3">
           {saveResult && (
@@ -256,11 +247,13 @@ export default function BulkReviewPage() {
 
       <div className="flex-1 overflow-y-auto">
         {loading && rows.length === 0 ? (
-          <div className="p-8 text-center text-gray-400 text-sm">Loading...</div>
+          <div className="p-8 text-center text-gray-400 text-sm">Loading products…</div>
         ) : !loading && fetchError ? (
           <div className="p-8 text-center text-red-500 text-sm">{fetchError}</div>
-        ) : !loading && filteredRows.length === 0 ? (
+        ) : !loading && filteredRows.length === 0 && rows.length === 0 ? (
           <div className="p-8 text-center text-gray-400 text-sm">No products found.</div>
+        ) : !loading && filteredRows.length === 0 ? (
+          <div className="p-8 text-center text-gray-400 text-sm">No {typeFilter} products in this page — try loading more.</div>
         ) : (
           <div className="divide-y divide-gray-100">
             {filteredRows.map((row) => (
@@ -314,7 +307,7 @@ function RowEditor({
   const hasNoContent = !row.summary && row.wctBullets.every((b) => !b) && row.pfBullets.every((b) => !b);
 
   return (
-    <div className={`grid grid-cols-[10rem_13rem_7rem_4fr_7rem_3fr_2fr] gap-4 p-4 transition-colors ${isDirty ? "bg-amber-50" : hasNoContent ? "bg-gray-100" : "bg-white hover:bg-gray-50"} ${hasNoContent ? "opacity-70" : ""}`}>
+    <div className={`grid grid-cols-[10rem_13rem_7rem_4fr_3fr_2fr] gap-4 p-4 transition-colors ${isDirty ? "bg-amber-50" : hasNoContent ? "bg-gray-100" : "bg-white hover:bg-gray-50"} ${hasNoContent ? "opacity-70" : ""}`}>
       {/* Col 1: Image + title */}
       <div>
         {row.imageUrl ? (
@@ -334,45 +327,26 @@ function RowEditor({
 
       {/* Col 2: Type */}
       <div>
-        <label className="block text-xs font-medium text-gray-500 mb-1">Type</label>
-        <select
-          value={row.productTypePt}
-          onChange={(e) => onChange({ productTypePt: e.target.value, productStylePt: "" })}
-          className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="">— none —</option>
-          {Object.keys(PRODUCT_TAXONOMY).map((t) => (
-            <option key={t} value={t}>{t}</option>
-          ))}
-        </select>
+        <div className="flex items-center justify-between mb-1">
+          <label className="text-xs font-medium text-gray-500">Type</label>
+          <a
+            href={`/products?id=${row.productId.split("/").pop()}`}
+            className="text-xs text-blue-500 hover:text-blue-700"
+          >
+            Edit →
+          </a>
+        </div>
+        <p className="text-xs text-gray-700">{row.productTypePt || <span className="text-gray-300">— none —</span>}</p>
       </div>
 
       {/* Col 3: Style */}
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-1">Style</label>
-        <div className="space-y-0.5">
-          {(PRODUCT_TAXONOMY[row.productTypePt] ?? []).map((style) => {
-            const selected = row.productStylePt.split(",").map((s) => s.trim()).filter(Boolean);
-            const checked = selected.includes(style);
-            return (
-              <label key={style} className="flex items-center gap-1.5 text-xs text-gray-700 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={() => {
-                    const next = checked ? selected.filter((s) => s !== style) : [...selected, style];
-                    onChange({ productStylePt: next.join(", ") });
-                  }}
-                  className="rounded border-gray-300"
-                />
-                {style}
-              </label>
-            );
-          })}
-          {!PRODUCT_TAXONOMY[row.productTypePt] && (
-            <span className="text-xs text-gray-300">Select a type first</span>
-          )}
-        </div>
+        <p className="text-xs text-gray-700 leading-snug">
+          {row.productStylePt
+            ? row.productStylePt.split(",").map((s) => s.trim()).filter(Boolean).join(", ")
+            : <span className="text-gray-300">—</span>}
+        </p>
       </div>
 
       {/* Col 4: Product Summary */}
@@ -385,33 +359,6 @@ function RowEditor({
           disabled={hasNoContent}
           className="w-full px-3 py-2 border border-gray-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
         />
-      </div>
-
-      {/* Col 5: Seasonal */}
-      <div>
-        <label className="block text-xs font-medium text-gray-500 mb-1">Seasonal</label>
-        <div className="space-y-1">
-          {([
-            { key: "mothersDay",    label: "Mother's" },
-            { key: "fathersDay",    label: "Father's" },
-            { key: "valentinesDay", label: "Valentine's" },
-          ] as const).map(({ key, label }) => (
-            <label key={key} className="flex items-center gap-1.5 text-xs text-gray-700 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={row.seasonalOverrides?.[key] ?? false}
-                onChange={() => onChange({
-                  seasonalOverrides: {
-                    ...(row.seasonalOverrides ?? { mothersDay: false, fathersDay: false, valentinesDay: false }),
-                    [key]: !(row.seasonalOverrides?.[key] ?? false),
-                  },
-                })}
-                className="rounded border-gray-300"
-              />
-              {label}
-            </label>
-          ))}
-        </div>
       </div>
 
       {/* Col 5: Why Choose This */}

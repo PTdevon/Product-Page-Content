@@ -16,11 +16,12 @@ interface Props {
   slotLabel?: string;
   productType: string;
   productStyles: string[];
+  selectedPhrases?: string[];
   onSelect: (phrase: string, icon: string, text?: string, subtext?: string) => void;
   onClose: () => void;
 }
 
-export default function SwapModal({ type, slotIndex, slotLabel, productType, productStyles, onSelect, onClose }: Props) {
+export default function SwapModal({ type, slotIndex, slotLabel, productType, productStyles, selectedPhrases = [], onSelect, onClose }: Props) {
   const [entries, setEntries] = useState<(WhyChooseThisEntry | PerfectForEntry)[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -116,28 +117,32 @@ export default function SwapModal({ type, slotIndex, slotLabel, productType, pro
             </ul>
           ) : (
             <ul className="divide-y divide-gray-50">
-              {(filtered as PerfectForEntry[]).map((e) => (
-                <li key={e.id}>
-                  <button
-                    onClick={() => onSelect(e.phrase, e.icon)}
-                    className="w-full text-left px-5 py-3 hover:bg-gray-50 transition-colors group flex items-center gap-3"
-                  >
-                    {e.icon && (
-                      <img
-                        src={e.icon.startsWith("https://") ? e.icon : `/icons/${e.icon}.svg`}
-                        alt=""
-                        className="w-5 h-5 shrink-0 opacity-60 group-hover:opacity-90"
-                      />
-                    )}
-                    <div className="min-w-0">
-                      <span className="text-gray-800 text-sm group-hover:text-gray-900">{e.phrase}</span>
-                      <div className="text-[11px] text-gray-400 mt-0.5">
-                        {e.productType} · {e.productStyle} · {e.category}
+              {(filtered as PerfectForEntry[]).map((e) => {
+                const alreadySelected = selectedPhrases.includes(e.phrase);
+                return (
+                  <li key={e.id}>
+                    <button
+                      onClick={() => !alreadySelected && onSelect(e.phrase, e.icon)}
+                      disabled={alreadySelected}
+                      className={`w-full text-left px-5 py-3 flex items-center gap-3 transition-colors ${alreadySelected ? "opacity-40 cursor-not-allowed bg-gray-50" : "hover:bg-gray-50 group"}`}
+                    >
+                      {e.icon && (
+                        <img
+                          src={e.icon.startsWith("https://") ? e.icon : `/icons/${e.icon}.svg`}
+                          alt=""
+                          className={`w-5 h-5 shrink-0 ${alreadySelected ? "opacity-60" : "opacity-60 group-hover:opacity-90"}`}
+                        />
+                      )}
+                      <div className="min-w-0">
+                        <span className={`text-sm ${alreadySelected ? "text-gray-400" : "text-gray-800 group-hover:text-gray-900"}`}>{e.phrase}</span>
+                        <div className="text-[11px] text-gray-400 mt-0.5">
+                          {e.productType} · {e.productStyle} · {e.category}
+                        </div>
                       </div>
-                    </div>
-                  </button>
-                </li>
-              ))}
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
