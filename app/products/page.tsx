@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import Nav from "@/components/Nav";
 import ProductList from "@/components/ProductList";
 import ProductEditor from "@/components/ProductEditor";
+import { PRODUCT_TAXONOMY } from "@/data/taxonomy";
 import type { ProductSummary } from "@/lib/types";
 
 export default function ProductsPage() {
@@ -21,6 +22,7 @@ function ProductsPageInner() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [typeFilter, setTypeFilter] = useState("");
   const [bestseller, setBestseller] = useState(false);
   const [pageSize, setPageSize] = useState(25);
   const [totalCount, setTotalCount] = useState<number | null>(null);
@@ -70,6 +72,7 @@ function ProductsPageInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, statusFilter, bestseller, pageSize]);
 
+  const filteredProducts = typeFilter ? products.filter((p) => p.productTypePt === typeFilter) : products;
   const selectedProduct = products.find((p) => p.id === selectedId) ?? null;
 
   function handleSaved() {
@@ -78,7 +81,7 @@ function ProductsPageInner() {
 
   return (
     <div className="flex flex-col h-screen">
-      <Nav active="products" />
+      <Nav active="products" helpText={"Browse and edit individual products.\nSelect a product from the list on the left to update its Type and Style classification, Why People Love This bullet points, and Perfect For phrases.\nChanges save to Shopify when you click Save."} />
 
       {/* Filter bar */}
       <div className="border-b border-gray-200 px-4 py-3 flex gap-3 items-center bg-white shrink-0 flex-wrap">
@@ -108,12 +111,24 @@ function ProductsPageInner() {
           <option value="partial">Partial Content</option>
           <option value="complete">Complete</option>
         </select>
+        <select
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value)}
+          className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        >
+          <option value="">All types</option>
+          {Object.keys(PRODUCT_TAXONOMY).map((t) => (
+            <option key={t} value={t}>{t}</option>
+          ))}
+        </select>
         <span className="text-sm text-gray-400">
           {loading && products.length === 0
             ? "Loading..."
-            : totalCount === null
-              ? `${products.length}${nextCursor ? "+" : ""} product${products.length !== 1 ? "s" : ""}`
-              : `${products.length} of ${totalCount} product${totalCount !== 1 ? "s" : ""}`}
+            : typeFilter
+              ? `${filteredProducts.length} product${filteredProducts.length !== 1 ? "s" : ""}`
+              : totalCount === null
+                ? `${products.length}${nextCursor ? "+" : ""} product${products.length !== 1 ? "s" : ""}`
+                : `${products.length} of ${totalCount} product${totalCount !== 1 ? "s" : ""}`}
         </span>
         <select
           value={pageSize}
@@ -131,11 +146,11 @@ function ProductsPageInner() {
         {/* Product list */}
         <div className={`${selectedId ? "hidden md:flex" : "flex"} flex-col w-full md:w-80 border-r border-gray-200 bg-white`}>
           <ProductList
-            products={products}
+            products={filteredProducts}
             loading={loading}
             selectedId={selectedId}
             onSelect={setSelectedId}
-            onLoadMore={nextCursor ? () => fetchProducts(false) : undefined}
+            onLoadMore={nextCursor && !typeFilter ? () => fetchProducts(false) : undefined}
           />
         </div>
 
