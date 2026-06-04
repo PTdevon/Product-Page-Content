@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import Image from "next/image";
 import Nav from "@/components/Nav";
 import SwapModal from "@/components/SwapModal";
+import { Tooltip } from "@/components/Tooltip";
 import type { ProductSummary } from "@/lib/types";
 import { PRODUCT_TAXONOMY } from "@/data/taxonomy";
 
@@ -61,18 +62,18 @@ function parseBullet(val: string): { text: string; subtext: string } {
 
 function ClassifyBadge({ status }: { status: ProductSummary["classifyStatus"] }) {
   if (status === "complete")
-    return <span className="px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700">Type and Style set</span>;
+    return <Tooltip content="This product already has a Product Type and Style assigned."><span className="px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700 cursor-default">Type and Style set</span></Tooltip>;
   if (status === "partial")
-    return <span className="px-2 py-0.5 rounded-full text-xs bg-yellow-100 text-yellow-700">Part. classified</span>;
-  return <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-500">No Type and Style set</span>;
+    return <Tooltip content="This product has a Type but no Style, or vice versa — it needs both before content can be generated."><span className="px-2 py-0.5 rounded-full text-xs bg-yellow-100 text-yellow-700 cursor-default">Part. classified</span></Tooltip>;
+  return <Tooltip content="This product hasn't been classified yet. Use Set Type & Style to assign one."><span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-500 cursor-default">No Type and Style set</span></Tooltip>;
 }
 
 function ContentBadge({ status }: { status: ProductSummary["contentStatus"] }) {
   if (status === "complete")
-    return <span className="px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700">Content set</span>;
+    return <Tooltip content="This product has its Why People Love This and Perfect For content filled in."><span className="px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700 cursor-default">Content set</span></Tooltip>;
   if (status === "partial")
-    return <span className="px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-700">Partial content</span>;
-  return <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-500">No Content set</span>;
+    return <Tooltip content="Some content fields are filled in but not all. Edit the product to complete it."><span className="px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-700 cursor-default">Partial content</span></Tooltip>;
+  return <Tooltip content="This product has no marketing content yet. Use Set Content to generate it."><span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-500 cursor-default">No Content set</span></Tooltip>;
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
@@ -168,8 +169,10 @@ export default function BulkPage() {
             return fetch(`/api/library?${params}`).then((r) => r.json()).catch(() => ({ entries: [] }));
           })
         );
-        const hasEntries = results.some((d) => (d.entries ?? []).length > 0);
-        return [key, hasEntries] as [string, boolean];
+        const seen = new Set<string>();
+        const entries = results.flatMap((d) => (d.entries ?? []) as { text: string; subtext?: string }[])
+          .filter((e) => { const k = `${e.text}|${e.subtext ?? ""}`; if (seen.has(k)) return false; seen.add(k); return true; });
+        return [key, entries] as [string, { text: string; subtext?: string }[]];
       })
     );
 
@@ -180,7 +183,12 @@ export default function BulkPage() {
         const styles = row.productStylePt ? row.productStylePt.split(",").map((s) => s.trim()).filter(Boolean) : [];
         return WCT_LABELS.map((category, i) => {
           const comboKey = `${row.productTypePt}|${styles.join("|")}|${category}`;
-          return [`${row.productId}|${i}`, wctComboMap[comboKey] ?? false] as [string, boolean];
+          const entries = wctComboMap[comboKey] ?? [];
+          const current = parseBullet(row.wctBullets[i]);
+          const hasAlternative = entries.some(
+            (e) => e.text !== current.text || (e.subtext ?? "") !== current.subtext
+          );
+          return [`${row.productId}|${i}`, hasAlternative] as [string, boolean];
         });
       });
       setWctAvailability(Object.fromEntries(wctPairs));
@@ -682,7 +690,7 @@ export default function BulkPage() {
 
   return (
     <div className="flex flex-col h-screen">
-      <Nav active="bulk" />
+      <Nav active="bulk" helpText={"Classify and generate content for many products at once.\nFilter and select the products you want to work on, then use Set Type & Style to classify them, and Set Content to generate their marketing copy.\nYou'll review everything before anything is saved."} />
 
       {/* Filter bar */}
       <div className="border-b border-gray-200 px-4 py-3 flex gap-3 items-center bg-white shrink-0 flex-wrap">
@@ -835,20 +843,24 @@ export default function BulkPage() {
             <span className="text-sm text-gray-500">
               {selectedCount === 0 ? "None selected" : `${selectedCount} selected`}
             </span>
-            <button
-              onClick={handleClassify}
-              disabled={selectedCount === 0 || classifyPhase !== "idle" || contentPhase !== "idle"}
-              className="px-4 py-2 bg-gray-900 text-white text-sm rounded disabled:opacity-40 hover:bg-gray-700 transition-colors"
-            >
-              Set Type &amp; Style{selectedCount > 0 ? ` (${selectedCount})` : ""}
-            </button>
-            <button
-              onClick={handleSetContent}
-              disabled={populateCount === 0 || contentPhase !== "idle" || classifyPhase !== "idle"}
-              className="px-4 py-2 bg-gray-900 text-white text-sm rounded disabled:opacity-40 hover:bg-gray-700 transition-colors"
-            >
-              {contentPhase === "loading" ? "Loading…" : `Set Content${populateCount > 0 ? ` (${populateCount})` : ""}`}
-            </button>
+            <Tooltip content="For selected products, use AI to suggest the right Product Type and Style. You'll review and approve before anything saves." side="top">
+              <button
+                onClick={handleClassify}
+                disabled={selectedCount === 0 || classifyPhase !== "idle" || contentPhase !== "idle"}
+                className="px-4 py-2 bg-gray-900 text-white text-sm rounded disabled:opacity-40 hover:bg-gray-700 transition-colors"
+              >
+                Set Type &amp; Style{selectedCount > 0 ? ` (${selectedCount})` : ""}
+              </button>
+            </Tooltip>
+            <Tooltip content="Load Why People Love This and Perfect For content for selected products. AI generates it where missing — you review everything before saving." side="top">
+              <button
+                onClick={handleSetContent}
+                disabled={populateCount === 0 || contentPhase !== "idle" || classifyPhase !== "idle"}
+                className="px-4 py-2 bg-gray-900 text-white text-sm rounded disabled:opacity-40 hover:bg-gray-700 transition-colors"
+              >
+                {contentPhase === "loading" ? "Loading…" : `Set Content${populateCount > 0 ? ` (${populateCount})` : ""}`}
+              </button>
+            </Tooltip>
           </div>
         </div>
 
@@ -873,13 +885,15 @@ export default function BulkPage() {
                       </span>
                     )}
                     {classifyPhase === "review" && classifyRows.some((r) => r.source === "existing" && !r.skip) && (
-                      <button
-                        onClick={handleRegenerateExisting}
-                        disabled={classifyRows.some((r) => r.regenerating)}
-                        className="px-3 py-1.5 text-xs border border-gray-300 text-gray-600 rounded hover:bg-gray-50 disabled:opacity-40 transition-colors"
-                      >
-                        {classifyRows.some((r) => r.regenerating) ? "Regenerating…" : "Regenerate all Existing"}
-                      </button>
+                      <Tooltip content="Re-run AI classification for products that already have a Type and Style. Use if the existing suggestions look wrong." side="bottom">
+                        <button
+                          onClick={handleRegenerateExisting}
+                          disabled={classifyRows.some((r) => r.regenerating)}
+                          className="px-3 py-1.5 text-xs border border-gray-300 text-gray-600 rounded hover:bg-gray-50 disabled:opacity-40 transition-colors"
+                        >
+                          {classifyRows.some((r) => r.regenerating) ? "Regenerating…" : "Regenerate all Existing"}
+                        </button>
+                      </Tooltip>
                     )}
                   </div>
                 </div>
@@ -972,13 +986,15 @@ export default function BulkPage() {
                           </td>
                           {/* Skip toggle */}
                           <td className="px-3 py-2 text-center">
-                            <input
-                              type="checkbox"
-                              checked={row.skip}
-                              onChange={(e) => handleSkipToggle(row.productId, e.target.checked)}
-                              disabled={classifyPhase === "saving" || classifyPhase === "saved"}
-                              className="rounded border-gray-300"
-                            />
+                            <Tooltip content="Tick to skip this product — it won't be updated when you save." side="left">
+                              <input
+                                type="checkbox"
+                                checked={row.skip}
+                                onChange={(e) => handleSkipToggle(row.productId, e.target.checked)}
+                                disabled={classifyPhase === "saving" || classifyPhase === "saved"}
+                                className="rounded border-gray-300"
+                              />
+                            </Tooltip>
                           </td>
                         </tr>
                       ))}
@@ -1083,16 +1099,18 @@ export default function BulkPage() {
                               </p>
                             )}
                           </div>
-                          <label className="flex items-center gap-1 text-sm text-gray-600 shrink-0 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={row.skip}
-                              onChange={(e) => setContentRows((rows) => rows.map((r) => r.productId === row.productId ? { ...r, skip: e.target.checked } : r))}
-                              disabled={row.source === "needs-classify" || contentPhase === "saving" || contentPhase === "saved"}
-                              className="rounded border-gray-300"
-                            />
-                            Skip
-                          </label>
+                          <Tooltip content="Tick to skip this product — it won't be updated when you save." side="left">
+                            <label className="flex items-center gap-1 text-sm text-gray-600 shrink-0 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={row.skip}
+                                onChange={(e) => setContentRows((rows) => rows.map((r) => r.productId === row.productId ? { ...r, skip: e.target.checked } : r))}
+                                disabled={row.source === "needs-classify" || contentPhase === "saving" || contentPhase === "saved"}
+                                className="rounded border-gray-300"
+                              />
+                              Skip
+                            </label>
+                          </Tooltip>
                         </div>
 
                         {/* Fields */}
