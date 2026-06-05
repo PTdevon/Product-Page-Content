@@ -87,6 +87,7 @@ export default function BulkPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [bestseller, setBestseller] = useState(false);
   const [typeFilter, setTypeFilter] = useState("");
+  const [styleFilter, setStyleFilter] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [pageSize, setPageSize] = useState(25);
   const [taxonomy, setTaxonomy] = useState<Record<string, string[]>>(PRODUCT_TAXONOMY);
@@ -260,9 +261,14 @@ export default function BulkPage() {
 
   // ── Selection helpers ────────────────────────────────────────────────────
 
-  const filteredProducts = typeFilter
-    ? products.filter((p) => p.productTypePt === typeFilter)
-    : products;
+  const filteredProducts = products.filter((p) => {
+    if (typeFilter && p.productTypePt !== typeFilter) return false;
+    if (styleFilter) {
+      const styles = p.productStylePt ? p.productStylePt.split(",").map((s) => s.trim()) : [];
+      if (!styles.includes(styleFilter)) return false;
+    }
+    return true;
+  });
 
   const allFilteredIds = filteredProducts.map((p) => p.id);
   const allSelected = allFilteredIds.length > 0 && allFilteredIds.every((id) => selectedIds.has(id));
@@ -715,25 +721,32 @@ export default function BulkPage() {
           onChange={(e) => setStatusFilter(e.target.value)}
           className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         >
-          <option value="">All products</option>
+          <option value="">Content Status</option>
           <option value="missing">No Content</option>
           <option value="partial">Partial Content</option>
           <option value="complete">Complete</option>
         </select>
         <select
           value={typeFilter}
-          onChange={(e) => { setTypeFilter(e.target.value); setSelectedIds(new Set()); }}
+          onChange={(e) => { setTypeFilter(e.target.value); setStyleFilter(""); setSelectedIds(new Set()); }}
           className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         >
           <option value="">All types</option>
-          {Object.keys(taxonomy).map((t) => (
-            <option key={t} value={t}>{t}</option>
-          ))}
+          {Object.keys(taxonomy).map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <select
+          value={styleFilter}
+          onChange={(e) => { setStyleFilter(e.target.value); setSelectedIds(new Set()); }}
+          disabled={!typeFilter || (taxonomy[typeFilter] ?? []).length === 0}
+          className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-40"
+        >
+          <option value="">All styles</option>
+          {(taxonomy[typeFilter] ?? []).map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
         <span className="text-sm text-gray-400">
           {loading && products.length === 0
             ? "Loading..."
-            : typeFilter
+            : (typeFilter || styleFilter)
               ? `${filteredProducts.length} product${filteredProducts.length !== 1 ? "s" : ""}`
               : totalCount === null
                 ? `${products.length}${nextCursor ? "+" : ""} product${products.length !== 1 ? "s" : ""}`
@@ -746,6 +759,7 @@ export default function BulkPage() {
         >
           {allSelected ? "Deselect all" : "Select all"}
         </button>
+        <div className="flex-1" />
         <select
           value={pageSize}
           onChange={(e) => setPageSize(Number(e.target.value))}
@@ -827,7 +841,7 @@ export default function BulkPage() {
                 )}
               </tbody>
             </table>
-            {nextCursor && !loading && !typeFilter && (
+            {nextCursor && !loading && !typeFilter && !styleFilter && (
               <div className="p-4 text-center border-t border-gray-100">
                 <button
                   onClick={() => fetchProducts(false, controllerRef.current?.signal)}

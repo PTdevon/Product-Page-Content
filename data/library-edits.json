@@ -58,6 +58,44 @@
       "icon": "heart",
       "searchPhrase": "Valentines Day",
       "isNew": false
+    },
+    "phrase-002": {
+      "id": "phrase-002",
+      "phrase": "Graduations",
+      "icon": "graduate",
+      "searchPhrase": "Graduations",
+      "isNew": false,
+      "category": "Occasion",
+      "timeSensitive": null,
+      "filterByInterest": false
+    },
+    "phrase-056": {
+      "id": "phrase-056",
+      "phrase": "Dads",
+      "icon": "wrench",
+      "searchPhrase": "Dads",
+      "isNew": false,
+      "deleted": true
+    },
+    "phrase-custom-1780649062629": {
+      "id": "phrase-custom-1780649062629",
+      "phrase": "Dads",
+      "icon": "wrench",
+      "searchPhrase": "",
+      "isNew": true,
+      "category": "Person",
+      "timeSensitive": null,
+      "filterByInterest": false
+    },
+    "phrase-051": {
+      "id": "phrase-051",
+      "phrase": "Anniversaries",
+      "icon": "gift",
+      "searchPhrase": "Anniversaries",
+      "isNew": false,
+      "category": "Occasion",
+      "timeSensitive": null,
+      "filterByInterest": false
     }
   },
   "pfApplicability": {
@@ -65,6 +103,47 @@
       "id": "pf-custom-1780583282940",
       "phraseId": "phrase-034",
       "productType": "Fairy Lights",
+      "productStyle": "ALL",
+      "applicabilityCount": 0,
+      "isNew": true
+    },
+    "pf-custom-1780648965285": {
+      "id": "pf-custom-1780648965285",
+      "phraseId": "phrase-003",
+      "productType": "Books & Stationery",
+      "productStyle": "ALL",
+      "applicabilityCount": 0,
+      "isNew": true
+    },
+    "pf-103": {
+      "id": "pf-103",
+      "phraseId": "phrase-056",
+      "productType": "Men's Jewellery & Accessories",
+      "productStyle": "ALL",
+      "applicabilityCount": 3,
+      "isNew": false,
+      "deleted": true
+    },
+    "pf-custom-1780649062632-lcoc": {
+      "id": "pf-custom-1780649062632-lcoc",
+      "phraseId": "phrase-custom-1780649062629",
+      "productType": "Men's Jewellery & Accessories",
+      "productStyle": "ALL",
+      "applicabilityCount": 0,
+      "isNew": true
+    },
+    "pf-custom-1780649514069": {
+      "id": "pf-custom-1780649514069",
+      "phraseId": "phrase-001",
+      "productType": "Books & Stationery",
+      "productStyle": "ALL",
+      "applicabilityCount": 0,
+      "isNew": true
+    },
+    "pf-custom-1780672252148": {
+      "id": "pf-custom-1780672252148",
+      "phraseId": "phrase-051",
+      "productType": "Men's Jewellery & Accessories",
       "productStyle": "ALL",
       "applicabilityCount": 0,
       "isNew": true

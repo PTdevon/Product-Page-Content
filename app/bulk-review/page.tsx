@@ -39,6 +39,7 @@ export default function BulkReviewPage() {
   const [bestseller, setBestseller] = useState(false);
   const [contentFilter, setContentFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
+  const [styleFilter, setStyleFilter] = useState("");
   const [pageSize, setPageSize] = useState(25);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [totalCount, setTotalCount] = useState<number | null>(null);
@@ -131,6 +132,10 @@ export default function BulkReviewPage() {
 
   const filteredRows = rows.filter((r) => {
     if (typeFilter && r.productTypePt !== typeFilter) return false;
+    if (styleFilter) {
+      const styles = r.productStylePt ? r.productStylePt.split(",").map((s) => s.trim()) : [];
+      if (!styles.includes(styleFilter)) return false;
+    }
     return true;
   });
 
@@ -197,40 +202,47 @@ export default function BulkReviewPage() {
           onChange={(e) => setContentFilter(e.target.value)}
           className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         >
-          <option value="">All Products</option>
+          <option value="">Content Status</option>
           <option value="content-partial">Partial Content</option>
           <option value="complete">Complete</option>
         </select>
         <select
           value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value)}
+          onChange={(e) => { setTypeFilter(e.target.value); setStyleFilter(""); }}
           className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         >
           <option value="">All types</option>
-          {Object.keys(PRODUCT_TAXONOMY).map((t) => (
-            <option key={t} value={t}>{t}</option>
-          ))}
+          {Object.keys(PRODUCT_TAXONOMY).map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
         <select
-          value={pageSize}
-          onChange={(e) => setPageSize(Number(e.target.value))}
-          className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          value={styleFilter}
+          onChange={(e) => setStyleFilter(e.target.value)}
+          disabled={!typeFilter || (PRODUCT_TAXONOMY[typeFilter] ?? []).length === 0}
+          className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-40"
         >
-          <option value={10}>10 per page</option>
-          <option value={25}>25 per page</option>
-          <option value={50}>50 per page</option>
-          <option value={100}>100 per page</option>
+          <option value="">All styles</option>
+          {(PRODUCT_TAXONOMY[typeFilter] ?? []).map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
         <span className="text-sm text-gray-400">
           {loading && rows.length === 0
             ? "Loading..."
-            : typeFilter
+            : (typeFilter || styleFilter)
               ? `${filteredRows.length} product${filteredRows.length !== 1 ? "s" : ""}`
               : totalCount === null
                 ? `${filteredRows.length}${nextCursor ? "+" : ""} product${filteredRows.length !== 1 ? "s" : ""}`
                 : `${filteredRows.length} of ${totalCount} product${totalCount !== 1 ? "s" : ""}`}
         </span>
         <div className="ml-auto flex items-center gap-3">
+          <select
+            value={pageSize}
+            onChange={(e) => setPageSize(Number(e.target.value))}
+            className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          >
+            <option value={10}>10 per page</option>
+            <option value={25}>25 per page</option>
+            <option value={50}>50 per page</option>
+            <option value={100}>100 per page</option>
+          </select>
           {saveResult && (
             <span className={`text-sm ${saveResult.failed > 0 ? "text-red-600" : "text-green-600"}`}>
               {saveResult.failed > 0 ? `${saveResult.failed} failed to save` : `${saveResult.saved} saved`}
@@ -258,7 +270,7 @@ export default function BulkReviewPage() {
         ) : !loading && filteredRows.length === 0 && rows.length === 0 ? (
           <div className="p-8 text-center text-gray-400 text-sm">No products found.</div>
         ) : !loading && filteredRows.length === 0 ? (
-          <div className="p-8 text-center text-gray-400 text-sm">No {typeFilter} products in this page — try loading more.</div>
+          <div className="p-8 text-center text-gray-400 text-sm">No matching products in this page — try loading more.</div>
         ) : (
           <div className="divide-y divide-gray-100">
             {filteredRows.map((row) => (
@@ -279,7 +291,7 @@ export default function BulkReviewPage() {
           </div>
         )}
 
-        {nextCursor && !loading && !typeFilter && (
+        {nextCursor && !loading && !typeFilter && !styleFilter && (
           <div className="p-4 text-center">
             <button
               onClick={() => fetchPage(false, controllerRef.current?.signal)}

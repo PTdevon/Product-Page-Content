@@ -13,7 +13,7 @@ const MAIN_LINKS = [
 
 const PF_SUB_LINKS = [
   { href: "/library?tab=perfect",  label: "Phrases",           key: "phrases" },
-  { href: "/settings/keywords",    label: "Interest Phrases",   key: "keywords" },
+  { href: "/settings/keywords",    label: "Interest Filter",    key: "keywords" },
   { href: "/icons",                label: "Icons",              key: "icons" },
   { href: "/settings",             label: "Seasonal Settings",  key: "seasonal" },
 ];

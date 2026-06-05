@@ -66,11 +66,14 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const search = searchParams.get("search") ?? "";
   const status = searchParams.get("status") ?? "";
+  const typeFilter  = searchParams.get("type")  ?? "";
+  const styleFilter = searchParams.get("style") ?? "";
 
   const bestseller   = searchParams.get("bestseller") === "true";
+  const christmas    = searchParams.get("christmas") === "true";
   const statusFilter = status;
 
-  const queryParts = ["-tag:hidden", "-tag:christmas"];
+  const queryParts = ["-tag:hidden", christmas ? "tag:christmas" : "-tag:christmas"];
   if (search) queryParts.push(`title:*${search}*`);
   if (bestseller) queryParts.push(`tag:*bestseller*`);
   const query = queryParts.join(" AND ");
@@ -88,9 +91,15 @@ export async function GET(req: NextRequest) {
 
       for (const edge of data.products.edges) {
         if (edge.node.tags.includes("hidden")) continue;
-        if (edge.node.tags.some((t: string) => t.toLowerCase() === "christmas")) continue;
+        const isChristmas = edge.node.tags.some((t: string) => t.toLowerCase() === "christmas");
+        if (christmas !== isChristmas) continue;
         const cs        = classifyStatus(edge.node);
         const contentSt = contentStatus(edge.node);
+        if (typeFilter && (edge.node.productTypePt?.value ?? "") !== typeFilter) continue;
+        if (styleFilter) {
+          const styles = (edge.node.productStylePt?.value ?? "").split(",").map((s: string) => s.trim());
+          if (!styles.includes(styleFilter)) continue;
+        }
         if (!statusFilter || matchesFilter(statusFilter, cs, contentSt)) {
           count++;
         }

@@ -149,7 +149,7 @@ export default function ProductTypesPage() {
     <div className="flex flex-col h-screen">
       <Nav active="product-types" helpText={"Set up your product taxonomy — the Types and Styles used to classify products.\nThese control which library content is suggested when generating product copy.\nTypes and Styles can only be deleted when no products are using them."} />
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-3xl mx-auto px-6 py-8">
+        <div className="max-w-7xl mx-auto px-6 py-8">
 
           <div className="flex items-center justify-between mb-6">
             <h1 className="text-xl font-semibold text-gray-900">Product Types</h1>
@@ -185,47 +185,48 @@ export default function ProductTypesPage() {
 
           {loading && <p className="text-gray-400 text-sm">Loading…</p>}
 
-          <div className="space-y-4">
-            {Object.entries(taxonomy).map(([type, styles]) => (
-              <div key={type} className="border border-gray-200 rounded-lg bg-white overflow-hidden">
-                {/* Type header */}
-                <div className="flex items-center gap-3 px-4 py-3 bg-gray-50 border-b border-gray-200">
+          <div className="border border-gray-200 rounded-lg bg-white overflow-hidden w-full">
+            {/* Column headings */}
+            <div className="flex items-stretch border-b border-gray-200 bg-gray-100">
+              <div className="w-64 shrink-0 border-r border-gray-200 px-4 py-2">
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Product Type</span>
+              </div>
+              <div className="flex-1 px-4 py-2">
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Product Style</span>
+              </div>
+            </div>
+
+            {Object.entries(taxonomy).map(([type, styles], i, arr) => (
+              <div key={type} className={`flex items-stretch${i < arr.length - 1 ? " border-b border-gray-100" : ""}`}>
+
+                {/* Type column */}
+                <div className="w-64 shrink-0 border-r border-gray-100 bg-gray-50 px-4 py-3 flex items-start">
                   {editingType === type ? (
-                    <>
+                    <div className="flex items-center gap-2 w-full">
                       <input
                         autoFocus
                         type="text"
                         value={editTypeName}
                         onChange={(e) => setEditTypeName(e.target.value)}
                         onKeyDown={(e) => { if (e.key === "Enter") saveTypeEdit(); if (e.key === "Escape") setEditingType(null); }}
-                        className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="flex-1 min-w-0 px-2 py-1 border border-gray-300 rounded text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
-                      <button onClick={saveTypeEdit} className="text-xs text-blue-600 hover:underline">Save</button>
-                      <button onClick={() => setEditingType(null)} className="text-xs text-gray-400 hover:underline">Cancel</button>
-                    </>
+                      <button onClick={saveTypeEdit} className="text-xs text-blue-600 hover:underline shrink-0">Save</button>
+                      <button onClick={() => setEditingType(null)} className="text-xs text-gray-400 hover:underline shrink-0">Cancel</button>
+                    </div>
                   ) : (
-                    <>
+                    <div className="flex items-center gap-2 w-full">
                       <span className="flex-1 font-medium text-gray-900 text-sm">{type}</span>
-                      <button
-                        onClick={() => { setEditingType(type); setEditTypeName(type); }}
-                        className="text-xs text-gray-400 hover:text-gray-700"
-                      >
-                        Edit
-                      </button>
+                      <button onClick={() => { setEditingType(type); setEditTypeName(type); }} className="text-xs text-gray-400 hover:text-gray-700 shrink-0">Edit</button>
                       <Tooltip content="Remove this product type. You'll be shown how many products use it — it can only be deleted when none do.">
-                        <button
-                          onClick={() => confirmDeleteType(type)}
-                          className="text-xs text-red-400 hover:text-red-600"
-                        >
-                          Delete
-                        </button>
+                        <button onClick={() => confirmDeleteType(type)} className="text-gray-300 hover:text-red-500 transition-colors leading-none shrink-0">&times;</button>
                       </Tooltip>
-                    </>
+                    </div>
                   )}
                 </div>
 
-                {/* Styles */}
-                <div className="px-4 py-3 flex flex-wrap gap-2 items-center">
+                {/* Styles column */}
+                <div className="flex-1 px-4 py-3 flex flex-wrap gap-2 items-center">
                   {styles.map((style) => (
                     <span key={style} className="group inline-flex items-center gap-1 px-2.5 py-1 bg-gray-100 rounded-full text-sm text-gray-700">
                       {editingStyle?.type === type && editingStyle?.style === style ? (

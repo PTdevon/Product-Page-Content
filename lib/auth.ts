@@ -1,30 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
 
-const SHOPIFY_CLIENT_SECRET = process.env.SHOPIFY_CLIENT_SECRET;
-const SHOPIFY_STORE_DOMAIN = process.env.SHOPIFY_STORE_DOMAIN ?? "";
-const SHOPIFY_CLIENT_ID = process.env.SHOPIFY_CLIENT_ID ?? "";
+const SECRET = process.env.SHOPIFY_CLIENT_SECRET ?? "";
+const DOMAIN = process.env.SHOPIFY_STORE_DOMAIN ?? "";
+const CLIENT_ID = process.env.SHOPIFY_CLIENT_ID ?? "";
 
+async function verifyShopifyToken(token: string): Promise<boolean> {
+  try {
+    const { payload } = await jwtVerify(token, new TextEncoder().encode(SECRET), {
+      algorithms: ["HS256"], clockTolerance: 30,
+    });
+    const aud = payload.aud;
+    return (
+      payload.iss === `https://${DOMAIN}/admin` &&
+      (aud === CLIENT_ID || (Array.isArray(aud) && aud.includes(CLIENT_ID)))
+    );
+  } catch { return false; }
+}
 
-export async function verifySessionToken(token: string) {
-  if (!SHOPIFY_CLIENT_SECRET) {
-    if (process.env.NODE_ENV === "production") throw new Error("SHOPIFY_CLIENT_SECRET is required in production");
-    throw new Error("SHOPIFY_CLIENT_SECRET not configured");
-  }
-
-  const secret = new TextEncoder().encode(SHOPIFY_CLIENT_SECRET);
-  const { payload } = await jwtVerify(token, secret, { algorithms: ["HS256"] });
-
-  const expectedIss = `https://${SHOPIFY_STORE_DOMAIN}/admin`;
-  if (payload.iss !== expectedIss) throw new Error(`Invalid issuer: ${payload.iss}`);
-  if (payload.aud !== SHOPIFY_CLIENT_ID) throw new Error("Invalid audience");
-
-  const dest = payload.dest as string | undefined;
-  if (dest && !dest.startsWith(`https://${SHOPIFY_STORE_DOMAIN}`)) {
-    throw new Error("Invalid destination");
-  }
-
-  return payload;
+async function verifyServerToken(token: string): Promise<boolean> {
+  try {
+    const { payload } = await jwtVerify(token, new TextEncoder().encode(SECRET), {
+      algorithms: ["HS256"], issuer: "pt-pdp-app",
+    });
+    return !!payload.sub;
+  } catch { return false; }
 }
 
 export async function requireAuth(req: NextRequest): Promise<NextResponse | null> {
@@ -32,13 +32,10 @@ export async function requireAuth(req: NextRequest): Promise<NextResponse | null
 
   const authHeader = req.headers.get("authorization");
   const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
-
-  if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  try {
-    await verifySessionToken(token);
-    return null;
-  } catch {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (token) {
+    if (await verifyServerToken(token)) return null;
+    if (await verifyShopifyToken(token)) return null;
   }
+
+  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 }

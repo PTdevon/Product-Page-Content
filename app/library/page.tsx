@@ -17,7 +17,7 @@ type WCTRow = WhyChooseThisEntry & { _edit: WCTEdit | null };
 
 type PushEvent =
   | { type: "progress"; title: string; status: "updated" | "error" }
-  | { type: "done"; total: number; updated: number; skipped: number; failed: number };
+  | { type: "done"; total: number; updated: number; swapped?: number; alternated?: number; skipped: number; failed: number };
 
 function IconImg({ icon, size = 20 }: { icon: string; size?: number }) {
   if (!icon) return <span className="text-gray-300 text-xs">—</span>;
@@ -308,7 +308,7 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
   const [actionReplacement, setActionReplacement] = useState("");
   const [actionReplacementPhrases, setActionReplacementPhrases] = useState<{ phraseId: string; phrase: string }[]>([]);
   const [actionLog, setActionLog] = useState<{ title: string; status: "updated" | "error" }[]>([]);
-  const [actionResult, setActionResult] = useState<{ updated: number; failed: number } | null>(null);
+  const [actionResult, setActionResult] = useState<{ updated: number; swapped: number; alternated: number; failed: number } | null>(null);
   const actionLogRef = useRef<HTMLDivElement>(null);
   const actionRef = useRef(false);
 
@@ -348,7 +348,7 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
               setActionLog((prev) => [...prev, { title: event.title, status: event.status }]);
               setTimeout(() => { if (actionLogRef.current) actionLogRef.current.scrollTop = actionLogRef.current.scrollHeight; }, 0);
             } else if (event.type === "done") {
-              setActionResult({ updated: event.updated, failed: event.failed });
+              setActionResult({ updated: event.updated, swapped: event.swapped ?? event.updated, alternated: event.alternated ?? 0, failed: event.failed });
               setActionPhase("done");
               receivedDone = true;
             }
@@ -423,7 +423,7 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type: "pf-scoped", phraseText, filterType: app.productType, filterStyle: app.productStyle }),
       }),
-      fetch(`/api/library?type=perfect&productType=${encodeURIComponent(app.productType)}&productStyle=${encodeURIComponent(app.productStyle)}`),
+      fetch(`/api/library?type=perfect&productType=${encodeURIComponent(app.productType)}`),
     ]);
     const findData = findRes.ok ? await findRes.json() : { products: [] };
     const phrasesData = phrasesRes.ok ? await phrasesRes.json() : { entries: [] };
@@ -510,7 +510,8 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
     });
     setSaving(false);
     if (!res.ok) { setSaveError("Save failed"); return; }
-    setJustSaved(true);
+    const previousPhrase = entry!._edit?.searchPhrase ?? entry!.phrase;
+    if (phrase.trim() !== previousPhrase) setJustSaved(true);
     setSavedConfirm(true);
     setTimeout(() => setSavedConfirm(false), 2000);
     onSaved();
@@ -672,7 +673,10 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
             <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
               <input type="checkbox" checked={filterByInterest} onChange={(e) => setFilterByInterest(e.target.checked)}
                 className="rounded border-gray-300" />
-              Filter by interest
+              <span>
+                Apply interest filter
+                <span className="block text-xs text-gray-400 font-normal">Requires setting up in the Interest Filter tab. Until configured, the phrase applies to all products as normal.</span>
+              </span>
             </label>
 
             {/* Type/style assignments */}
@@ -689,15 +693,15 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
                         className="text-gray-400 hover:text-red-500 transition-colors">&times;</button>
                     </div>
                   ))}
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <select value={addingType} onChange={(e) => { setAddingType(e.target.value); setAddingStyle(""); }}
-                      className="flex-1 border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      className="flex-1 min-w-0 border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                       <option value="">Add type…</option>
                       {Object.keys(taxonomy).map((t) => <option key={t} value={t}>{t}</option>)}
                     </select>
                     {addingStyles.length > 0 && (
                       <select value={addingStyle} onChange={(e) => setAddingStyle(e.target.value)}
-                        className="flex-1 border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        className="flex-1 min-w-0 border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                         <option value="">All styles</option>
                         {addingStyles.map((s) => <option key={s} value={s}>{s}</option>)}
                       </select>
@@ -705,7 +709,7 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
                     {addingType && (
                       <button
                         onClick={() => { setTypeStylePairs((prev) => [...prev, { type: addingType, style: addingStyle }]); setAddingType(""); setAddingStyle(""); }}
-                        className="px-3 py-1.5 bg-gray-900 text-white text-sm rounded hover:bg-gray-700 transition-colors">Add</button>
+                        className="shrink-0 px-3 py-1.5 bg-gray-900 text-white text-sm rounded hover:bg-gray-700 transition-colors">Add</button>
                     )}
                   </div>
                 </div>
@@ -726,9 +730,9 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
                     </div>
                   ))}
                 </div>
-                <div className="flex gap-2 mt-2">
+                <div className="flex flex-wrap gap-2 mt-2">
                   <select value={addingType} onChange={(e) => { setAddingType(e.target.value); setAddingStyle(""); }}
-                    className="flex-1 border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    className="flex-1 min-w-0 border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                     <option value="">Add type…</option>
                     {Object.keys(taxonomy).map((t) => {
                       const fullyAssigned = entry?.applicabilities.some((a) => a.productType === t && a.productStyle === "ALL");
@@ -741,14 +745,14 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
                   </select>
                   {addingStyles.length > 0 && (
                     <select value={addingStyle} onChange={(e) => setAddingStyle(e.target.value)}
-                      className="flex-1 border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      className="flex-1 min-w-0 border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                       <option value="">All styles</option>
                       {addingStyles.map((s) => <option key={s} value={s}>{s}</option>)}
                     </select>
                   )}
                   {addingType && (
                     <button onClick={handleAddAssignment}
-                      className="px-3 py-1.5 bg-gray-900 text-white text-sm rounded hover:bg-gray-700 transition-colors">Add</button>
+                      className="shrink-0 px-3 py-1.5 bg-gray-900 text-white text-sm rounded hover:bg-gray-700 transition-colors">Add</button>
                   )}
                 </div>
               </div>
@@ -822,7 +826,9 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
                     </div>
                     {actionPhase === "done" && actionResult && (
                       <p className="text-xs text-gray-500">
-                        {actionResult.updated} updated · {actionResult.failed} failed
+                        {actionResult.swapped} received replacement phrase
+                        {actionResult.alternated > 0 && ` · ${actionResult.alternated} received an alternative (already had replacement)`}
+                        {actionResult.failed > 0 && ` · ${actionResult.failed} failed`}
                       </p>
                     )}
                     {actionPhase === "done" && mode === "remove-assignment" && (
@@ -939,11 +945,17 @@ function LibraryPageInner() {
   const [editPfTarget, setEditPfTarget] = useState<PFPhraseRow | null | undefined>(undefined);
   const [addingNew, setAddingNew] = useState(false);
 
+  // Keep the open PF modal entry in sync with freshly fetched phrase data
+  const editPfTargetId = editPfTarget?.id;
+  useEffect(() => {
+    if (!editPfTargetId) return;
+    const updated = pfPhrases.find((p) => p.id === editPfTargetId);
+    if (updated) setEditPfTarget(updated);
+  }, [pfPhrases, editPfTargetId]);
+
   useEffect(() => {
     fetch("/api/taxonomy").then((r) => r.ok ? r.json() : null).then((d) => { if (d?.taxonomy) setTaxonomy(d.taxonomy); }).catch(() => {});
   }, []);
-
-  const availableStyles = productType ? (taxonomy[productType] ?? []) : [];
 
   const fetchEntries = useCallback(async () => {
     setLoading(true);
@@ -980,7 +992,6 @@ function LibraryPageInner() {
   }, [tab]);
 
   useEffect(() => { fetchEntries(); }, [fetchEntries]);
-  useEffect(() => { setProductStyle(""); }, [productType]);
 
   function closeModal() { setEditWctTarget(undefined); setEditPfTarget(undefined); setAddingNew(false); }
 
@@ -998,15 +1009,16 @@ function LibraryPageInner() {
       <div className="border-b border-gray-200 px-4 py-3 flex gap-3 items-center bg-white shrink-0 flex-wrap">
         <input type="search" placeholder="Search…" value={search} onChange={(e) => setSearch(e.target.value)}
           className="px-3 py-1.5 border border-gray-300 rounded text-sm w-44 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
-        <select value={productType} onChange={(e) => setProductType(e.target.value)}
+        <select value={productType} onChange={(e) => { setProductType(e.target.value); setProductStyle(""); }}
           className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
           <option value="">All types</option>
           {Object.keys(taxonomy).map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
-        <select value={productStyle} onChange={(e) => setProductStyle(e.target.value)} disabled={!productType}
+        <select value={productStyle} onChange={(e) => setProductStyle(e.target.value)}
+          disabled={!productType || (taxonomy[productType] ?? []).length === 0}
           className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-40">
           <option value="">All styles</option>
-          {availableStyles.map((s) => <option key={s} value={s}>{s}</option>)}
+          {(taxonomy[productType] ?? []).map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
         <select value={category} onChange={(e) => setCategory(e.target.value)}
           className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">

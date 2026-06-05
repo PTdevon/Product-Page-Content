@@ -49,6 +49,7 @@ export interface ProductSummary {
   productStylePt: string;
   classifyStatus: "complete" | "partial" | "missing";
   contentStatus: "complete" | "partial" | "missing";
+  isChristmas: boolean;
 }
 
 export interface AppSettings {

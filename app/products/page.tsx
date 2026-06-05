@@ -23,7 +23,9 @@ function ProductsPageInner() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
+  const [styleFilter, setStyleFilter] = useState("");
   const [bestseller, setBestseller] = useState(false);
+  const [christmas, setChristmas] = useState(false);
   const [pageSize, setPageSize] = useState(25);
   const [totalCount, setTotalCount] = useState<number | null>(null);
   const searchParams = useSearchParams();
@@ -36,21 +38,28 @@ function ProductsPageInner() {
     const params = new URLSearchParams();
     if (search) params.set("search", search);
     if (statusFilter) params.set("status", statusFilter);
+    if (typeFilter) params.set("type", typeFilter);
+    if (styleFilter) params.set("style", styleFilter);
     if (bestseller) params.set("bestseller", "true");
+    if (christmas) params.set("christmas", "true");
     try {
       const res = await fetch(`/api/products/count?${params}`);
       if (!res.ok) return;
       const data = await res.json();
       setTotalCount(data.count);
     } catch { /* network error — leave count as null */ }
-  }, [search, statusFilter, bestseller]);
+  }, [search, statusFilter, typeFilter, styleFilter, bestseller, christmas]);
 
   const fetchProducts = useCallback(async (reset = true) => {
     setLoading(true);
+    if (reset) { setProducts([]); setNextCursor(null); }
     const params = new URLSearchParams();
     if (search) params.set("search", search);
     if (statusFilter) params.set("status", statusFilter);
+    if (typeFilter) params.set("type", typeFilter);
+    if (styleFilter) params.set("style", styleFilter);
     if (bestseller) params.set("bestseller", "true");
+    if (christmas) params.set("christmas", "true");
     params.set("limit", String(pageSize));
     if (!reset && nextCursor) params.set("cursor", nextCursor);
 
@@ -64,19 +73,29 @@ function ProductsPageInner() {
     setProducts((prev) => reset ? data.products : [...prev, ...data.products]);
     setNextCursor(data.nextCursor);
     setLoading(false);
-  }, [search, statusFilter, bestseller, pageSize, nextCursor]);
+  }, [search, statusFilter, typeFilter, styleFilter, bestseller, christmas, pageSize, nextCursor]);
 
   useEffect(() => {
     fetchProducts(true);
     fetchTotalCount();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, statusFilter, bestseller, pageSize]);
+  }, [search, statusFilter, typeFilter, styleFilter, bestseller, christmas, pageSize]);
 
-  const filteredProducts = typeFilter ? products.filter((p) => p.productTypePt === typeFilter) : products;
   const selectedProduct = products.find((p) => p.id === selectedId) ?? null;
 
   function handleSaved() {
     fetchProducts(true);
+  }
+
+  function handleChristmasToggle(checked: boolean) {
+    setChristmas(checked);
+    // Christmas mode doesn't use type/style/status filters
+    if (checked) {
+      setTypeFilter("");
+      setStyleFilter("");
+      setStatusFilter("");
+    }
+    setSelectedId(null);
   }
 
   return (
@@ -101,35 +120,54 @@ function ProductsPageInner() {
           />
           Bestseller Tag
         </label>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        >
-          <option value="">All products</option>
-          <option value="missing">No Content</option>
-          <option value="partial">Partial Content</option>
-          <option value="complete">Complete</option>
-        </select>
-        <select
-          value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value)}
-          className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        >
-          <option value="">All types</option>
-          {Object.keys(PRODUCT_TAXONOMY).map((t) => (
-            <option key={t} value={t}>{t}</option>
-          ))}
-        </select>
+        <label className="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={christmas}
+            onChange={(e) => handleChristmasToggle(e.target.checked)}
+            className="rounded border-gray-300"
+          />
+          Christmas Tag
+        </label>
+        {!christmas && (
+          <>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="">Content Status</option>
+              <option value="missing">No Content</option>
+              <option value="partial">Partial Content</option>
+              <option value="complete">Complete</option>
+            </select>
+            <select
+              value={typeFilter}
+              onChange={(e) => { setTypeFilter(e.target.value); setStyleFilter(""); }}
+              className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="">All types</option>
+              {Object.keys(PRODUCT_TAXONOMY).map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+            <select
+              value={styleFilter}
+              onChange={(e) => setStyleFilter(e.target.value)}
+              disabled={!typeFilter || (PRODUCT_TAXONOMY[typeFilter] ?? []).length === 0}
+              className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-40"
+            >
+              <option value="">All styles</option>
+              {(PRODUCT_TAXONOMY[typeFilter] ?? []).map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </>
+        )}
         <span className="text-sm text-gray-400">
           {loading && products.length === 0
             ? "Loading..."
-            : typeFilter
-              ? `${filteredProducts.length} product${filteredProducts.length !== 1 ? "s" : ""}`
-              : totalCount === null
-                ? `${products.length}${nextCursor ? "+" : ""} product${products.length !== 1 ? "s" : ""}`
-                : `${products.length} of ${totalCount} product${totalCount !== 1 ? "s" : ""}`}
+            : totalCount === null
+              ? `${products.length}${nextCursor ? "+" : ""} product${products.length !== 1 ? "s" : ""}`
+              : `${products.length} of ${totalCount} product${totalCount !== 1 ? "s" : ""}`}
         </span>
+        <div className="flex-1" />
         <select
           value={pageSize}
           onChange={(e) => setPageSize(Number(e.target.value))}
@@ -146,11 +184,11 @@ function ProductsPageInner() {
         {/* Product list */}
         <div className={`${selectedId ? "hidden md:flex" : "flex"} flex-col w-full md:w-80 border-r border-gray-200 bg-white`}>
           <ProductList
-            products={filteredProducts}
+            products={products}
             loading={loading}
             selectedId={selectedId}
             onSelect={setSelectedId}
-            onLoadMore={nextCursor && !typeFilter ? () => fetchProducts(false) : undefined}
+            onLoadMore={nextCursor ? () => fetchProducts(false) : undefined}
           />
         </div>
 
@@ -170,6 +208,7 @@ function ProductsPageInner() {
               productTitle={selectedProduct?.title ?? ""}
               onSaved={handleSaved}
               onClose={() => setSelectedId(null)}
+              isChristmas={christmas}
             />
           </div>
         ) : (

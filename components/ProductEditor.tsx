@@ -56,6 +56,7 @@ interface Props {
   productTitle: string;
   onSaved: () => void;
   onClose: () => void;
+  isChristmas?: boolean;
 }
 
 interface ProductData {
@@ -109,7 +110,7 @@ function SectionHeading({ children, action }: { children: React.ReactNode; actio
   );
 }
 
-export default function ProductEditor({ productId, productTitle, onSaved, onClose }: Props) {
+export default function ProductEditor({ productId, productTitle, onSaved, onClose, isChristmas = false }: Props) {
   const [data, setData] = useState<ProductData | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -417,8 +418,8 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
             </button>
           </div>
 
-          {/* Type + Style */}
-          <section>
+          {/* Type + Style — hidden for Christmas products */}
+          {!isChristmas && <section>
             <SectionHeading>Product Type &amp; Style</SectionHeading>
             <select
               value={productType}
@@ -445,7 +446,7 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
             )}
             {typeStyleError && <p className="text-red-500 text-xs mt-2">{typeStyleError}</p>}
             {previewLoading && <p className="text-gray-400 text-xs mt-2">Updating preview…</p>}
-          </section>
+          </section>}
 
           {/* Product Summary */}
           <section>
@@ -493,8 +494,8 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
             )}
           </section>
 
-          {/* Why People Love This */}
-          <section>
+          {/* Why People Love This — hidden for Christmas products */}
+          {!isChristmas && <section>
             <SectionHeading>Why People Love This</SectionHeading>
             {(!productType || productStyles.length === 0) && !wctBullets.bullet1 ? (
               <p className="text-sm text-gray-400 italic">Please select a Product Type and Style above to populate</p>
@@ -584,10 +585,10 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
                 </button>
               </Tooltip>
             )}
-          </section>
+          </section>}
 
-          {/* Perfect For */}
-          <section>
+          {/* Perfect For — hidden for Christmas products */}
+          {!isChristmas && <section>
             <SectionHeading>Perfect For</SectionHeading>
             {(!productType || productStyles.length === 0) && pfSlots.every(s => !s.phrase) ? (
               <p className="text-sm text-gray-400 italic">Please select a Product Type and Style above to populate</p>
@@ -660,7 +661,7 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
               ))}
             </div>
             )}
-          </section>
+          </section>}
 
         </div>
       </div>
