@@ -42,8 +42,8 @@ export async function POST(req: NextRequest) {
   // Map phrase text → current icon so stale stored icons are corrected on display
   const pfIconByPhrase = new Map(pfLibrary.map((e) => [e.phrase, e.icon]));
 
-  function syncedPfIcons(bullets: [string, string, string, string], storedIcons: [string, string, string, string]): [string, string, string, string] {
-    return bullets.map((phrase, i) => pfIconByPhrase.get(phrase) ?? storedIcons[i]) as [string, string, string, string];
+  function syncedPfIcons(bullets: [string, string, string, string], storedIcons: [string | undefined, string | undefined, string | undefined, string | undefined]): [string, string, string, string] {
+    return bullets.map((phrase, i) => pfIconByPhrase.get(phrase) ?? storedIcons[i] ?? "") as [string, string, string, string];
   }
 
   const rows = [];
