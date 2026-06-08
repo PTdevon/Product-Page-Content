@@ -89,9 +89,12 @@ export interface LibraryEdits {
 
 type ShopifyNode = { id: string; fields: { key: string; value: string }[] };
 
-// In-memory cache — reduces Shopify API calls within a single serverless invocation
+// In-memory cache — reduces Shopify API calls within a single serverless invocation.
+// TTL ensures the long-running dev server picks up changes made elsewhere (e.g. on Vercel).
+const CACHE_TTL_MS = 30_000;
 let _editsCache: LibraryEdits | null = null;
 let _nodeId: string | null = null;
+let _cacheExpiry = 0;
 
 function normalise(parsed: Partial<LibraryEdits>): LibraryEdits {
   return {
@@ -102,7 +105,7 @@ function normalise(parsed: Partial<LibraryEdits>): LibraryEdits {
 }
 
 export async function getLibraryEdits(): Promise<LibraryEdits> {
-  if (_editsCache) return _editsCache;
+  if (_editsCache && Date.now() < _cacheExpiry) return _editsCache;
 
   // Try Shopify metaobject first
   try {
@@ -114,11 +117,13 @@ export async function getLibraryEdits(): Promise<LibraryEdits> {
       if (field?.value) {
         try {
           _editsCache = normalise(JSON.parse(field.value) as Partial<LibraryEdits>);
+          _cacheExpiry = Date.now() + CACHE_TTL_MS;
           return _editsCache;
         } catch {}
       }
       // Node exists but field is empty — treat as blank store
       _editsCache = { wct: {}, pfPhrases: {}, pfApplicability: {} };
+      _cacheExpiry = Date.now() + CACHE_TTL_MS;
       return _editsCache;
     }
   } catch {}
@@ -130,11 +135,13 @@ export async function getLibraryEdits(): Promise<LibraryEdits> {
   } catch {
     _editsCache = { wct: {}, pfPhrases: {}, pfApplicability: {} };
   }
+  _cacheExpiry = Date.now() + CACHE_TTL_MS;
   return _editsCache;
 }
 
 async function persist(edits: LibraryEdits): Promise<void> {
   _editsCache = edits; // keep cache in sync before any await
+  _cacheExpiry = Date.now() + CACHE_TTL_MS;
   const f = [{ key: FIELD_KEY, value: JSON.stringify(edits) }];
 
   if (_nodeId) {
