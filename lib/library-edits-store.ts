@@ -149,7 +149,18 @@ async function persist(edits: LibraryEdits): Promise<void> {
     return;
   }
 
-  // No node yet — try to create
+  // No cached node ID — query first to avoid duplicate-create errors on warm restarts
+  try {
+    const check = await shopifyGraphQL<{ metaobjects: { nodes: ShopifyNode[] } }>(QUERY);
+    const existing = check.metaobjects.nodes[0] ?? null;
+    if (existing) {
+      _nodeId = existing.id;
+      await shopifyGraphQL(UPDATE, { id: _nodeId, f });
+      return;
+    }
+  } catch {}
+
+  // No node exists yet — create it
   const res = await shopifyGraphQL<{
     metaobjectCreate: { metaobject: { id: string } | null; userErrors: { message: string }[] };
   }>(CREATE, { f });
