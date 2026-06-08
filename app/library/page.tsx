@@ -319,6 +319,7 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
   const [actionPhase, setActionPhase] = useState<ActionPhase>("idle");
   const [actionFoundCount, setActionFoundCount] = useState(0);
   const [actionFoundProducts, setActionFoundProducts] = useState<{ id: string; title: string }[]>([]);
+  const [pendingDeleteIds, setPendingDeleteIds] = useState(new Set<string>());
   const [actionReplacement, setActionReplacement] = useState("");
   const [actionReplacementPhrases, setActionReplacementPhrases] = useState<{ phraseId: string; phrase: string }[]>([]);
   const [actionLog, setActionLog] = useState<{ title: string; status: "updated" | "error" }[]>([]);
@@ -491,6 +492,8 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
       setActionPhase("error");
       return;
     }
+    const deletedId = removeApp.id;
+    setPendingDeleteIds(prev => { const n = new Set(prev); n.add(deletedId); return n; });
     setMode("edit");
     setRemoveApp(null);
     setActionPhase("idle");
@@ -572,6 +575,7 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
         setSaveError(data.error ?? "Failed to save icon");
         return;
       }
+      setContentSavedNeedsUpdate(true);
       onSaved();
     }
   }
@@ -730,7 +734,11 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
                 className="rounded border-gray-300" />
               <span>
                 Apply interest filter
-                <span className="block text-xs text-gray-400 font-normal">Requires setting up in the Interest Filter tab. Until configured, the phrase applies to all products as normal.</span>
+                <span className="block text-xs text-gray-400 font-normal">
+                  {isNew && filterByInterest
+                    ? (<>Once saved, visit <a href="/settings/keywords" className="underline text-blue-500">Interest Filter</a> to add keywords for this phrase.</>)
+                    : "Requires setting up in the Interest Filter tab. Until configured, the phrase applies to all products as normal."}
+                </span>
               </span>
             </label>
 
@@ -780,7 +788,7 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
               <div>
                 <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-2">Product Types / Styles</label>
                 <div className="space-y-1.5">
-                  {(entry?.applicabilities ?? []).map((app) => (
+                  {(entry?.applicabilities ?? []).filter(a => !pendingDeleteIds.has(a.id)).map((app) => (
                     <div key={app.id} className="flex items-center gap-2 text-sm">
                       <span className="flex-1 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded text-gray-700">
                         {app.productType} · {app.productStyle}
