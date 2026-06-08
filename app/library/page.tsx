@@ -24,7 +24,13 @@ function IconImg({ icon, size = 20 }: { icon: string; size?: number }) {
   if (icon.startsWith("https://"))
     return <img src={icon} alt="" style={{ width: size, height: size }} className="object-contain" />;
   if (icon.startsWith("<svg"))
-    return <span style={{ width: size, height: size, display: "inline-flex", alignItems: "center" }} dangerouslySetInnerHTML={{ __html: icon }} />;
+    return (
+      <span
+        style={{ width: size, height: size, minWidth: size, display: "inline-flex", alignItems: "center", overflow: "hidden" }}
+        dangerouslySetInnerHTML={{ __html: icon.replace(/<svg([^>]*)>/, (_, attrs) =>
+          `<svg${attrs.replace(/\s*(width|height)="[^"]*"/g, "")} width="${size}" height="${size}" style="display:block">`) }}
+      />
+    );
   return <img src={`/icons/${icon}.svg`} alt={icon} style={{ width: size, height: size }} className="object-contain" />;
 }
 
@@ -946,17 +952,14 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
 
           <div className="px-6 py-4 border-t border-gray-100 flex flex-col gap-2 shrink-0">
             {findPhase === "idle" && mode === "edit" && contentSavedNeedsUpdate && (
-              <div className="px-3 py-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800 flex items-center justify-between">
-                <span>Saved — remember to update products using this phrase.</span>
-                <button onClick={handleFind} className="ml-3 font-medium underline hover:no-underline whitespace-nowrap">
-                  Find &amp; Update →
-                </button>
+              <div className="px-3 py-2 bg-amber-100 border border-amber-400 rounded text-sm text-amber-900 font-medium">
+                Saved. Remember to update products using this phrase.
               </div>
             )}
             {findPhase === "idle" && mode === "edit" && showKeywordsReminder && (
-              <div className="px-3 py-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-800 flex items-center justify-between">
-                <span>Interest filter enabled — add keywords on the Interest Filter page.</span>
-                <a href="/settings/keywords" className="ml-3 font-medium underline hover:no-underline whitespace-nowrap">
+              <div className="px-3 py-2 bg-blue-100 border border-blue-400 rounded text-sm text-blue-900 font-medium flex items-center justify-between">
+                <span>Interest filter enabled. Add keywords in the Interest Filter page.</span>
+                <a href="/settings/keywords" className="ml-3 underline hover:no-underline whitespace-nowrap">
                   Go to Keywords →
                 </a>
               </div>
