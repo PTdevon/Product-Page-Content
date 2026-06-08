@@ -65,9 +65,7 @@
       "icon": "graduate",
       "searchPhrase": "Graduations",
       "isNew": false,
-      "category": "Occasion",
-      "timeSensitive": null,
-      "filterByInterest": false
+      "deleted": true
     },
     "phrase-056": {
       "id": "phrase-056",
@@ -147,6 +145,33 @@
       "productStyle": "ALL",
       "applicabilityCount": 0,
       "isNew": true
+    },
+    "pf-002": {
+      "id": "pf-002",
+      "phraseId": "phrase-002",
+      "productType": "Bags & Purses",
+      "productStyle": "ALL",
+      "applicabilityCount": 4,
+      "isNew": false,
+      "deleted": true
+    },
+    "pf-100": {
+      "id": "pf-100",
+      "phraseId": "phrase-002",
+      "productType": "Men's Jewellery & Accessories",
+      "productStyle": "ALL",
+      "applicabilityCount": 3,
+      "isNew": false,
+      "deleted": true
+    },
+    "pf-138": {
+      "id": "pf-138",
+      "phraseId": "phrase-002",
+      "productType": "Women's Jewellery",
+      "productStyle": "ALL",
+      "applicabilityCount": 4,
+      "isNew": false,
+      "deleted": true
     }
   }
 }

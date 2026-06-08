@@ -120,12 +120,17 @@ export async function DELETE(req: NextRequest) {
 
   const { type, id } = await req.json() as { type: "wct" | "pf-phrase" | "pf-applicability"; id: string };
 
-  if (type === "wct") {
-    await deleteWCTEdit(id);
-  } else if (type === "pf-applicability") {
-    await removeApplicability(id);
-  } else if (type === "pf-phrase") {
-    await deletePhrase(id);
+  try {
+    if (type === "wct") {
+      await deleteWCTEdit(id);
+    } else if (type === "pf-applicability") {
+      await removeApplicability(id);
+    } else if (type === "pf-phrase") {
+      await deletePhrase(id);
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true });

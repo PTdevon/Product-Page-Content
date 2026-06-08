@@ -262,7 +262,7 @@ function WCTEditModal({ entry, onClose, onSaved, taxonomy }: WCTEditModalProps) 
 
 // ── PF Edit Modal ─────────────────────────────────────────────────────────────
 
-type ActionPhase = "idle" | "checking" | "confirm" | "replacing" | "done";
+type ActionPhase = "idle" | "checking" | "confirm" | "replacing" | "done" | "error";
 type ModalMode = "edit" | "delete" | "remove-assignment";
 
 interface PFEditModalProps {
@@ -309,11 +309,13 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
   const [actionReplacementPhrases, setActionReplacementPhrases] = useState<{ phraseId: string; phrase: string }[]>([]);
   const [actionLog, setActionLog] = useState<{ title: string; status: "updated" | "error" }[]>([]);
   const [actionResult, setActionResult] = useState<{ updated: number; swapped: number; alternated: number; failed: number } | null>(null);
+  const [actionError, setActionError] = useState("");
   const actionLogRef = useRef<HTMLDivElement>(null);
   const actionRef = useRef(false);
 
   const hasEdit = !!entry?._edit;
-  const canFind = !isNew && (justSaved || (hasEdit && !entry._edit!.isNew && !!entry._edit!.searchPhrase));
+  const phraseChanged = phrase !== (entry?.phrase ?? "");
+  const canFind = !isNew && (justSaved || phraseChanged);
 
   // ── Shared helper: stream a replace operation ──────────────────────────────
   async function streamReplace(oldPhrase: string, newPhrase: string, filterType?: string, filterStyle?: string) {
@@ -401,10 +403,16 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
       // streamReplace sets actionPhase to "done" — the "Remove assignment" button in the
       // done state handles the final step for remove-assignment; for delete we proceed here
     }
-    await fetch("/api/library/entry", {
+    const res = await fetch("/api/library/entry", {
       method: "DELETE", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ type: "pf-phrase", id: entry.id }),
     });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({})) as { error?: string };
+      setActionError(data.error ?? `Delete failed (${res.status})`);
+      setActionPhase("error");
+      return;
+    }
     onSaved();
     onClose();
   }
@@ -811,6 +819,9 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
                         : mode === "delete" ? "Delete phrase" : "Remove assignment"}
                     </button>
                   </>
+                )}
+                {actionPhase === "error" && (
+                  <p className="text-sm text-red-600">{actionError}</p>
                 )}
                 {(actionPhase === "replacing" || actionPhase === "done") && (
                   <>

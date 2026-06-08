@@ -1,7 +1,49 @@
 import fs from "fs/promises";
 import path from "path";
+import { shopifyGraphQL } from "./shopify";
 
+const TYPE = "pdp_library_edits";
+const FIELD_KEY = "edits_json";
 const EDITS_PATH = path.join(process.cwd(), "data", "library-edits.json");
+
+const QUERY = `
+  query GetLibraryEdits {
+    metaobjects(type: "${TYPE}", first: 1) {
+      nodes { id fields { key value } }
+    }
+  }
+`;
+
+const CREATE = `
+  mutation CreateLibraryEdits($f: [MetaobjectFieldInput!]!) {
+    metaobjectCreate(metaobject: { type: "${TYPE}", fields: $f }) {
+      metaobject { id }
+      userErrors { field message }
+    }
+  }
+`;
+
+const UPDATE = `
+  mutation UpdateLibraryEdits($id: ID!, $f: [MetaobjectFieldInput!]!) {
+    metaobjectUpdate(id: $id, metaobject: { fields: $f }) {
+      metaobject { id }
+      userErrors { field message }
+    }
+  }
+`;
+
+const CREATE_DEF = `
+  mutation CreateLibraryEditsDef {
+    metaobjectDefinitionCreate(definition: {
+      type: "${TYPE}",
+      name: "PDP Library Edits",
+      fieldDefinitions: [{ name: "Edits JSON", key: "${FIELD_KEY}", type: "multi_line_text_field" }]
+    }) {
+      metaobjectDefinition { id }
+      userErrors { field message }
+    }
+  }
+`;
 
 export interface WCTEdit {
   id: string;
@@ -45,23 +87,81 @@ export interface LibraryEdits {
   pfApplicability: Record<string, PFApplicabilityEdit>;
 }
 
+type ShopifyNode = { id: string; fields: { key: string; value: string }[] };
+
+// In-memory cache — reduces Shopify API calls within a single serverless invocation
+let _editsCache: LibraryEdits | null = null;
+let _nodeId: string | null = null;
+
+function normalise(parsed: Partial<LibraryEdits>): LibraryEdits {
+  return {
+    wct: parsed.wct ?? {},
+    pfPhrases: parsed.pfPhrases ?? {},
+    pfApplicability: parsed.pfApplicability ?? {},
+  };
+}
+
 export async function getLibraryEdits(): Promise<LibraryEdits> {
+  if (_editsCache) return _editsCache;
+
+  // Try Shopify metaobject first
+  try {
+    const data = await shopifyGraphQL<{ metaobjects: { nodes: ShopifyNode[] } }>(QUERY);
+    const node = data.metaobjects.nodes[0] ?? null;
+    if (node) {
+      _nodeId = node.id;
+      const field = node.fields.find((f) => f.key === FIELD_KEY);
+      if (field?.value) {
+        try {
+          _editsCache = normalise(JSON.parse(field.value) as Partial<LibraryEdits>);
+          return _editsCache;
+        } catch {}
+      }
+      // Node exists but field is empty — treat as blank store
+      _editsCache = { wct: {}, pfPhrases: {}, pfApplicability: {} };
+      return _editsCache;
+    }
+  } catch {}
+
+  // Fallback: static file seed (used on first deploy before metaobject is created)
   try {
     const raw = await fs.readFile(EDITS_PATH, "utf-8");
-    const parsed = JSON.parse(raw) as LibraryEdits;
-    // Ensure all sections exist (handles files written before this migration)
-    return {
-      wct: parsed.wct ?? {},
-      pfPhrases: parsed.pfPhrases ?? {},
-      pfApplicability: parsed.pfApplicability ?? {},
-    };
+    _editsCache = normalise(JSON.parse(raw) as Partial<LibraryEdits>);
   } catch {
-    return { wct: {}, pfPhrases: {}, pfApplicability: {} };
+    _editsCache = { wct: {}, pfPhrases: {}, pfApplicability: {} };
   }
+  return _editsCache;
 }
 
 async function persist(edits: LibraryEdits): Promise<void> {
-  await fs.writeFile(EDITS_PATH, JSON.stringify(edits, null, 2), "utf-8");
+  _editsCache = edits; // keep cache in sync before any await
+  const f = [{ key: FIELD_KEY, value: JSON.stringify(edits) }];
+
+  if (_nodeId) {
+    await shopifyGraphQL(UPDATE, { id: _nodeId, f });
+    return;
+  }
+
+  // No node yet — try to create
+  const res = await shopifyGraphQL<{
+    metaobjectCreate: { metaobject: { id: string } | null; userErrors: { message: string }[] };
+  }>(CREATE, { f });
+
+  if (res.metaobjectCreate.metaobject?.id) {
+    _nodeId = res.metaobjectCreate.metaobject.id;
+    return;
+  }
+
+  // Metaobject type doesn't exist yet — create the definition then retry
+  if (res.metaobjectCreate.userErrors.length > 0) {
+    await shopifyGraphQL(CREATE_DEF).catch(() => {});
+    const retry = await shopifyGraphQL<{
+      metaobjectCreate: { metaobject: { id: string } | null; userErrors: { message: string }[] };
+    }>(CREATE, { f });
+    if (retry.metaobjectCreate.metaobject?.id) {
+      _nodeId = retry.metaobjectCreate.metaobject.id;
+    }
+  }
 }
 
 // Serialize all mutations so concurrent requests don't overwrite each other
