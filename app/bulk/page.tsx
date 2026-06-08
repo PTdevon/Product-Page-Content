@@ -99,6 +99,7 @@ export default function BulkPage() {
   const [contentRows, setContentRows] = useState<ContentRow[]>([]);
   const [contentPhase, setContentPhase] = useState<ContentPhase>("idle");
   const [contentSaveResult, setContentSaveResult] = useState<{ saved: number; failed: number } | null>(null);
+  const [contentError, setContentError] = useState<string | null>(null);
   const [wctEditing, setWctEditing] = useState<{ productId: string; slotIndex: number; text: string; subtext: string } | null>(null);
   const [bulkSwapModal, setBulkSwapModal] = useState<{ productId: string; type: "why" | "perfect"; slotIndex: number } | null>(null);
   const [pfAvailability, setPfAvailability] = useState<Record<string, boolean>>({});
@@ -108,6 +109,7 @@ export default function BulkPage() {
   const [classifyRows, setClassifyRows] = useState<ClassifyRow[]>([]);
   const [classifyPhase, setClassifyPhase] = useState<ClassifyPhase>("idle");
   const [classifySaveResult, setClassifySaveResult] = useState<{ saved: number; failed: number } | null>(null);
+  const [classifyError, setClassifyError] = useState<string | null>(null);
   const classifyPanelRef = useRef<HTMLDivElement>(null);
 
   // Total count
@@ -299,6 +301,7 @@ export default function BulkPage() {
     setClassifyRows([]);
     setClassifyPhase("streaming");
     setClassifySaveResult(null);
+    setClassifyError(null);
 
     // Split: products with existing classification show immediately, unclassified go to AI
     const selectedProducts = products.filter((p) => selectedIds.has(p.id));
@@ -336,7 +339,12 @@ export default function BulkPage() {
       body: JSON.stringify({ productIds: needsClassify.map((p) => p.id) }),
     });
 
-    if (!res.ok || !res.body) { setClassifyPhase("review"); return; }
+    if (!res.ok || !res.body) {
+      setClassifyError("Classification failed — please try again.");
+      setClassifyPhase("idle");
+      setClassifyRows([]);
+      return;
+    }
 
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
@@ -449,7 +457,7 @@ export default function BulkPage() {
       }
     } catch {
       setClassifyRows((rows) => rows.map((r) =>
-        productIds.includes(r.productId) ? { ...r, regenerating: false } : r
+        productIds.includes(r.productId) ? { ...r, regenerating: false, error: "Failed to reach server — please try again" } : r
       ));
     }
   }
@@ -575,6 +583,7 @@ export default function BulkPage() {
     setContentPhase("loading");
     setContentRows([]);
     setContentSaveResult(null);
+    setContentError(null);
 
     const res = await fetch("/api/bulk-content-review", {
       method: "POST",
@@ -582,7 +591,11 @@ export default function BulkPage() {
       body: JSON.stringify({ productIds: ids }),
     });
 
-    if (!res.ok) { setContentPhase("idle"); return; }
+    if (!res.ok) {
+      setContentError("Failed to load content — please try again.");
+      setContentPhase("idle");
+      return;
+    }
 
     const text = await res.text();
     let data: { rows: ContentRow[] };
@@ -591,6 +604,7 @@ export default function BulkPage() {
     } catch (e) {
       console.error("Bulk content review — raw response:", text.slice(0, 1000));
       console.error("Parse error:", e);
+      setContentError("Failed to parse response — please try again.");
       setContentPhase("idle");
       return;
     }
@@ -721,7 +735,7 @@ export default function BulkPage() {
           onChange={(e) => setStatusFilter(e.target.value)}
           className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         >
-          <option value="">Content Status</option>
+          <option value="">All Products</option>
           <option value="missing">No Content</option>
           <option value="partial">Partial Content</option>
           <option value="complete">Complete</option>
@@ -855,6 +869,9 @@ export default function BulkPage() {
 
           {/* Bottom action bar */}
           <div className="border-t border-gray-200 px-4 py-3 flex items-center gap-3 bg-white shrink-0 flex-wrap">
+            {(classifyError || contentError) && (
+              <span className="w-full text-xs text-red-500">{classifyError || contentError}</span>
+            )}
             <div className="flex-1" />
             <span className="text-sm text-gray-500">
               {selectedCount === 0 ? "None selected" : `${selectedCount} selected`}

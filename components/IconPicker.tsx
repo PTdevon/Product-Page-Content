@@ -68,7 +68,7 @@ export default function IconPicker({ current, onSelect, onClose }: Props) {
                       }`}
                     >
                       <img src={`/icons/${name}.svg`} alt={name} className="w-6 h-6" />
-                      <span className="text-[9px] text-gray-400 truncate w-full text-center">{name}</span>
+                      <span className="text-[11px] text-gray-500 truncate w-full text-center">{name}</span>
                     </button>
                   );
                 })}
@@ -93,7 +93,7 @@ export default function IconPicker({ current, onSelect, onClose }: Props) {
                             className="w-6 h-6 flex items-center justify-center [&>svg]:w-6 [&>svg]:h-6"
                             dangerouslySetInnerHTML={{ __html: svg }}
                           />
-                          <span className="text-[9px] text-gray-400 truncate w-full text-center">{name}</span>
+                          <span className="text-[11px] text-gray-500 truncate w-full text-center">{name}</span>
                         </button>
                       );
                     })}

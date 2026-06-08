@@ -14,6 +14,7 @@ interface DeleteTarget {
 interface UsageState {
   loading: boolean;
   count: number | null;
+  products: string[] | null;
 }
 
 export default function ProductTypesPage() {
@@ -42,7 +43,7 @@ export default function ProductTypesPage() {
 
   // Delete modal
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
-  const [usage, setUsage] = useState<UsageState>({ loading: false, count: null });
+  const [usage, setUsage] = useState<UsageState>({ loading: false, count: null, products: null });
 
   useEffect(() => {
     fetch("/api/taxonomy")
@@ -87,11 +88,11 @@ export default function ProductTypesPage() {
 
   function confirmDeleteType(type: string) {
     setDeleteTarget({ type });
-    setUsage({ loading: true, count: null });
+    setUsage({ loading: true, count: null, products: null });
     fetch(`/api/taxonomy/usage?type=${encodeURIComponent(type)}`)
       .then((r) => r.json())
-      .then((d) => setUsage({ loading: false, count: d.count ?? 0 }))
-      .catch(() => setUsage({ loading: false, count: null }));
+      .then((d) => setUsage({ loading: false, count: d.count ?? 0, products: d.products ?? [] }))
+      .catch(() => setUsage({ loading: false, count: null, products: null }));
   }
 
   function deleteType() {
@@ -126,11 +127,11 @@ export default function ProductTypesPage() {
 
   function confirmDeleteStyle(type: string, style: string) {
     setDeleteTarget({ type, style });
-    setUsage({ loading: true, count: null });
+    setUsage({ loading: true, count: null, products: null });
     fetch(`/api/taxonomy/usage?type=${encodeURIComponent(type)}&style=${encodeURIComponent(style)}`)
       .then((r) => r.json())
-      .then((d) => setUsage({ loading: false, count: d.count ?? 0 }))
-      .catch(() => setUsage({ loading: false, count: null }));
+      .then((d) => setUsage({ loading: false, count: d.count ?? 0, products: d.products ?? [] }))
+      .catch(() => setUsage({ loading: false, count: null, products: null }));
   }
 
   function deleteStyle() {
@@ -340,9 +341,16 @@ export default function ProductTypesPage() {
                       ? `use the type "${deleteTarget.type}"`
                       : `use the style "${deleteTarget.style}" under "${deleteTarget.type}"`}.
                   </p>
-                  <p className="text-xs text-amber-700 mt-1">
-                    Reassign those products before deleting.
+                  <p className="text-xs text-amber-700 mt-1 mb-2">
+                    Reassign these products before deleting.
                   </p>
+                  {usage.products && usage.products.length > 0 && (
+                    <ul className="max-h-48 overflow-y-auto border border-amber-200 rounded bg-white text-xs text-gray-700 divide-y divide-amber-100">
+                      {usage.products.map((title) => (
+                        <li key={title} className="px-2 py-1">{title}</li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               ) : (
                 <p className="text-sm text-gray-500 mt-3">No products are using this {isDeleteType ? "type" : "style"}. Safe to delete.</p>

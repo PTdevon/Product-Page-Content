@@ -85,6 +85,7 @@ export interface LibraryEdits {
   wct: Record<string, WCTEdit>;
   pfPhrases: Record<string, PFPhraseEdit>;
   pfApplicability: Record<string, PFApplicabilityEdit>;
+  uploadedIcons: Array<{ name: string; svg: string }>;
 }
 
 type ShopifyNode = { id: string; fields: { key: string; value: string }[] };
@@ -101,6 +102,7 @@ function normalise(parsed: Partial<LibraryEdits>): LibraryEdits {
     wct: parsed.wct ?? {},
     pfPhrases: parsed.pfPhrases ?? {},
     pfApplicability: parsed.pfApplicability ?? {},
+    uploadedIcons: parsed.uploadedIcons ?? [],
   };
 }
 
@@ -122,7 +124,7 @@ export async function getLibraryEdits(): Promise<LibraryEdits> {
         } catch {}
       }
       // Node exists but field is empty — treat as blank store
-      _editsCache = { wct: {}, pfPhrases: {}, pfApplicability: {} };
+      _editsCache = { wct: {}, pfPhrases: {}, pfApplicability: {}, uploadedIcons: [] };
       _cacheExpiry = Date.now() + CACHE_TTL_MS;
       return _editsCache;
     }
@@ -133,7 +135,7 @@ export async function getLibraryEdits(): Promise<LibraryEdits> {
     const raw = await fs.readFile(EDITS_PATH, "utf-8");
     _editsCache = normalise(JSON.parse(raw) as Partial<LibraryEdits>);
   } catch {
-    _editsCache = { wct: {}, pfPhrases: {}, pfApplicability: {} };
+    _editsCache = { wct: {}, pfPhrases: {}, pfApplicability: {}, uploadedIcons: [] };
   }
   _cacheExpiry = Date.now() + CACHE_TTL_MS;
   return _editsCache;
@@ -275,6 +277,18 @@ export function deletePFApplicabilityEdit(id: string): Promise<void> {
   return serialized(async () => {
     const edits = await getLibraryEdits();
     delete edits.pfApplicability[id];
+    await persist(edits);
+  });
+}
+
+// ── Uploaded Icons ────────────────────────────────────────────────────────────
+
+export function updateUploadedIcons(
+  icons: Array<{ name: string; svg: string }>
+): Promise<void> {
+  return serialized(async () => {
+    const edits = await getLibraryEdits();
+    edits.uploadedIcons = icons;
     await persist(edits);
   });
 }

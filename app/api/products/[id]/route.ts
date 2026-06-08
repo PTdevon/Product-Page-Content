@@ -13,6 +13,7 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  try {
   const authError = await requireAuth(req);
   if (authError) return authError;
 
@@ -69,4 +70,8 @@ export async function GET(
   };
 
   return NextResponse.json({ product, metafields, preview });
+  } catch (e) {
+    const msg = e instanceof Error ? `${e.message}\n${e.stack ?? ""}` : String(e);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
 }

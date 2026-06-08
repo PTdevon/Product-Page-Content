@@ -2,11 +2,8 @@ const domain = process.env.SHOPIFY_STORE_DOMAIN!;
 const token = process.env.SHOPIFY_ACCESS_TOKEN!;
 const API_VERSION = "2025-10";
 
-export async function shopifyGraphQL<T>(
-  query: string,
-  variables?: Record<string, unknown>
-): Promise<T> {
-  const res = await fetch(
+async function doRequest(query: string, variables?: Record<string, unknown>): Promise<Response> {
+  return fetch(
     `https://${domain}/admin/api/${API_VERSION}/graphql.json`,
     {
       method: "POST",
@@ -17,6 +14,20 @@ export async function shopifyGraphQL<T>(
       body: JSON.stringify({ query, variables }),
     }
   );
+}
+
+export async function shopifyGraphQL<T>(
+  query: string,
+  variables?: Record<string, unknown>
+): Promise<T> {
+  let res = await doRequest(query, variables);
+
+  // Retry once on rate limit, honouring Retry-After header (cap at 5s)
+  if (res.status === 429) {
+    const retryAfter = Math.min(parseFloat(res.headers.get("Retry-After") ?? "1"), 5);
+    await new Promise((r) => setTimeout(r, retryAfter * 1000));
+    res = await doRequest(query, variables);
+  }
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
@@ -26,7 +37,9 @@ export async function shopifyGraphQL<T>(
 
   const json = await res.json();
 
-  if (json.errors) {
+  // Only throw on fatal GraphQL errors (no data returned).
+  // Shopify can return data + errors together for partial/field-level issues; those are non-fatal.
+  if (json.errors && !json.data) {
     throw new Error(`Shopify GraphQL error: ${JSON.stringify(json.errors)}`);
   }
 

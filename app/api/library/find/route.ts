@@ -3,6 +3,10 @@ import { requireAuth } from "@/lib/auth";
 import { shopifyGraphQL } from "@/lib/shopify";
 import { getLibraryEdits } from "@/lib/library-edits-store";
 import { findPhraseForEntry } from "@/lib/pf-store";
+import wctData from "@/data/why-choose-this.json";
+import type { WhyChooseThisEntry } from "@/lib/types";
+
+const wctLibrary = wctData as WhyChooseThisEntry[];
 
 const SCAN_QUERY = `
   query ScanProducts($first: Int!, $after: String) {
@@ -63,12 +67,17 @@ export async function POST(req: NextRequest) {
 
   if (type === "wct") {
     const wctEntry = edits.wct[id];
-    if (!wctEntry) return NextResponse.json({ error: "Entry not found" }, { status: 404 });
+    const baseEntry = wctLibrary.find((e) => e.id === id);
 
-    const oldFormatted = wctEntry.searchFormatted;
-    if (!oldFormatted) return NextResponse.json({ products: [] });
+    if (!wctEntry && !baseEntry) return NextResponse.json({ error: "Entry not found" }, { status: 404 });
 
-    const newFormatted = formatWCT(wctEntry.text, wctEntry.subtext);
+    const entryProductType = wctEntry?.productType ?? baseEntry!.productType;
+    const entryProductStyle = wctEntry?.productStyle ?? baseEntry!.productStyle;
+
+    const newFormatted = formatWCT(wctEntry?.text ?? baseEntry!.text, wctEntry?.subtext ?? baseEntry!.subtext);
+    const oldFormatted = wctEntry?.searchFormatted || (baseEntry ? formatWCT(baseEntry.text, baseEntry.subtext) : newFormatted);
+
+    const searchFor = new Set([oldFormatted, newFormatted].filter(Boolean));
 
     while (true) {
       const data: ScanResult = await shopifyGraphQL<ScanResult>(SCAN_QUERY, { first: 250, after: cursor });
@@ -76,10 +85,10 @@ export async function POST(req: NextRequest) {
       for (const { node } of data.products.edges) {
         const productType = node.typePt?.value ?? "";
         const productStyle = node.stylePt?.value ?? "";
-        if (productType !== wctEntry.productType || !productStyle.split(",").map((s: string) => s.trim()).includes(wctEntry.productStyle)) continue;
+        if (productType !== entryProductType || !productStyle.split(",").map((s: string) => s.trim()).includes(entryProductStyle)) continue;
 
         const bullets = [node.wct1?.value ?? "", node.wct2?.value ?? "", node.wct3?.value ?? "", node.wct4?.value ?? ""];
-        if (bullets.some((b) => b === oldFormatted) && oldFormatted !== newFormatted) {
+        if (bullets.some((b) => searchFor.has(b))) {
           matches.push({ id: node.id, title: node.title });
         }
       }
@@ -114,21 +123,21 @@ export async function POST(req: NextRequest) {
       cursor = data.products.edges[data.products.edges.length - 1]?.cursor ?? null;
     }
   } else {
-    // PF: id is a phraseId
+    // PF: id is a phraseId — find all products that currently have this phrase text in their bullets
     const found = await findPhraseForEntry(id);
     if (!found) return NextResponse.json({ error: "Phrase not found" }, { status: 404 });
 
-    const oldPhrase = found.edit?.searchPhrase;
-    if (!oldPhrase) return NextResponse.json({ products: [] });
-
     const newPhrase = found.phrase.phrase;
+    const oldPhrase = found.edit?.searchPhrase;
+    // Search for current phrase text, and also old text if the phrase was renamed
+    const searchFor = new Set([newPhrase, oldPhrase].filter(Boolean) as string[]);
 
     while (true) {
       const data: ScanResult = await shopifyGraphQL<ScanResult>(SCAN_QUERY, { first: 250, after: cursor });
 
       for (const { node } of data.products.edges) {
         const bullets = [node.pf1?.value ?? "", node.pf2?.value ?? "", node.pf3?.value ?? "", node.pf4?.value ?? ""];
-        if (bullets.some((b) => b === oldPhrase) && oldPhrase !== newPhrase) {
+        if (bullets.some((b) => searchFor.has(b))) {
           matches.push({ id: node.id, title: node.title });
         }
       }

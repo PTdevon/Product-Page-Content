@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
-import { setProductMetafields } from "@/lib/metafields";
+import { setProductsMetafieldsBatch } from "@/lib/metafields";
 import { assignSeasonalPhrases } from "@/lib/assignment-engine";
 import { getPfLibrary } from "@/lib/pf-store";
 
@@ -22,19 +22,17 @@ export async function POST(req: NextRequest) {
 
   const pfLibrary = await getPfLibrary();
 
-  let saved = 0;
-  let failed = 0;
+  const batchRows = rows.map((row) => {
+    const seasonal = row.productTypePt !== undefined
+      ? assignSeasonalPhrases(
+          { title: "", descriptionText: "", productType: row.productTypePt, productStyles: row.productStylePt ? row.productStylePt.split(",").map((s) => s.trim()).filter(Boolean) : [] },
+          pfLibrary
+        )
+      : null;
 
-  for (const row of rows) {
-    try {
-      const seasonal = row.productTypePt !== undefined
-        ? assignSeasonalPhrases(
-            { title: "", descriptionText: "", productType: row.productTypePt, productStyles: row.productStylePt ? row.productStylePt.split(",").map((s) => s.trim()).filter(Boolean) : [] },
-            pfLibrary
-          )
-        : null;
-
-      await setProductMetafields(row.productId, {
+    return {
+      productGid: row.productId,
+      data: {
         ...(row.productTypePt !== undefined && { productTypePt: row.productTypePt }),
         ...(row.productStylePt !== undefined && { productStylePt: row.productStylePt }),
         ...(seasonal && {
@@ -61,12 +59,14 @@ export async function POST(req: NextRequest) {
           icon3: row.pfIcons[2],
           icon4: row.pfIcons[3],
         },
-      });
-      saved++;
-    } catch {
-      failed++;
-    }
-  }
+      },
+    };
+  });
 
-  return NextResponse.json({ saved, failed });
+  try {
+    await setProductsMetafieldsBatch(batchRows);
+    return NextResponse.json({ saved: rows.length, failed: 0 });
+  } catch {
+    return NextResponse.json({ saved: 0, failed: rows.length });
+  }
 }

@@ -78,13 +78,7 @@ interface ProductData {
   } | null;
 }
 
-// SVG strings saved to Shopify metafields have id="name" — extract it so the editor always holds plain names
 function normalizeIcon(icon: string): string {
-  if (!icon || icon.startsWith("https://")) return icon;
-  if (icon.startsWith("<svg")) {
-    const m = icon.match(/\bid="([^"]+)"/);
-    return m ? m[1] : icon;
-  }
   return icon;
 }
 
@@ -147,8 +141,11 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
     setLoading(true);
     setError("");
     fetch(`/api/products/${productId}`)
-      .then((r) => {
-        if (!r.ok) throw new Error(`Failed to load product (${r.status})`);
+      .then(async (r) => {
+        if (!r.ok) {
+          const body = await r.json().catch(() => ({}));
+          throw new Error(body.error ? `${r.status}: ${body.error}` : `Failed to load product (${r.status})`);
+        }
         return r.json();
       })
       .then((d: ProductData) => {

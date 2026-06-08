@@ -7,6 +7,7 @@ const QUERY = `
     products(first: $first, after: $after) {
       edges {
         node {
+          title
           productTypePt:  metafield(namespace: "product", key: "product_type")  { value }
           productStylePt: metafield(namespace: "product", key: "product_style") { value }
         }
@@ -18,7 +19,7 @@ const QUERY = `
 `;
 
 type MF = { value: string } | null;
-type Row = { productTypePt: MF; productStylePt: MF };
+type Row = { title: string; productTypePt: MF; productStylePt: MF };
 type Result = { products: { edges: { node: Row; cursor: string }[]; pageInfo: { hasNextPage: boolean } } };
 
 export async function GET(req: NextRequest) {
@@ -29,7 +30,7 @@ export async function GET(req: NextRequest) {
   const type  = searchParams.get("type")  ?? "";
   const style = searchParams.get("style") ?? "";
 
-  let count = 0;
+  const titles: string[] = [];
   let cursor: string | null = null;
   let hasMore = true;
 
@@ -44,7 +45,7 @@ export async function GET(req: NextRequest) {
           const styles = nodeStyle.split(",").map((s) => s.trim());
           if (!styles.includes(style)) continue;
         }
-        count++;
+        titles.push(node.title);
       }
       hasMore = data.products.pageInfo.hasNextPage;
       if (hasMore && data.products.edges.length > 0) {
@@ -56,5 +57,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: message }, { status: 502 });
   }
 
-  return NextResponse.json({ count });
+  titles.sort((a, b) => a.localeCompare(b));
+  return NextResponse.json({ count: titles.length, products: titles });
 }
