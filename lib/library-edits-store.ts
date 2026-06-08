@@ -16,7 +16,7 @@ const QUERY = `
 
 const CREATE = `
   mutation CreateLibraryEdits($f: [MetaobjectFieldInput!]!) {
-    metaobjectCreate(metaobject: { type: "${TYPE}", fields: $f }) {
+    metaobjectCreate(metaobject: { type: "${TYPE}", handle: "main", fields: $f }) {
       metaobject { id }
       userErrors { field message }
     }
@@ -145,7 +145,12 @@ async function persist(edits: LibraryEdits): Promise<void> {
   const f = [{ key: FIELD_KEY, value: JSON.stringify(edits) }];
 
   if (_nodeId) {
-    await shopifyGraphQL(UPDATE, { id: _nodeId, f });
+    const res = await shopifyGraphQL<{
+      metaobjectUpdate: { metaobject: { id: string } | null; userErrors: { message: string }[] };
+    }>(UPDATE, { id: _nodeId, f });
+    if (res.metaobjectUpdate.userErrors.length > 0) {
+      throw new Error(`Shopify save failed: ${res.metaobjectUpdate.userErrors.map((e) => e.message).join(", ")}`);
+    }
     return;
   }
 
@@ -155,10 +160,18 @@ async function persist(edits: LibraryEdits): Promise<void> {
     const existing = check.metaobjects.nodes[0] ?? null;
     if (existing) {
       _nodeId = existing.id;
-      await shopifyGraphQL(UPDATE, { id: _nodeId, f });
+      const res = await shopifyGraphQL<{
+        metaobjectUpdate: { metaobject: { id: string } | null; userErrors: { message: string }[] };
+      }>(UPDATE, { id: _nodeId, f });
+      if (res.metaobjectUpdate.userErrors.length > 0) {
+        throw new Error(`Shopify save failed: ${res.metaobjectUpdate.userErrors.map((e) => e.message).join(", ")}`);
+      }
       return;
     }
-  } catch {}
+  } catch (e) {
+    // If this is our own userErrors error, re-throw it
+    if (e instanceof Error && e.message.startsWith("Shopify save failed")) throw e;
+  }
 
   // No node exists yet — create it
   const res = await shopifyGraphQL<{
@@ -178,7 +191,9 @@ async function persist(edits: LibraryEdits): Promise<void> {
     }>(CREATE, { f });
     if (retry.metaobjectCreate.metaobject?.id) {
       _nodeId = retry.metaobjectCreate.metaobject.id;
+      return;
     }
+    throw new Error(`Shopify save failed: ${retry.metaobjectCreate.userErrors.map((e) => e.message).join(", ")}`);
   }
 }
 
