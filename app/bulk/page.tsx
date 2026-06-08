@@ -45,6 +45,7 @@ interface ContentRow {
   dirty: boolean;
   skip: boolean;
   regenerating: boolean;
+  summaryError?: { message: string; billingUrl?: string };
   regenerateError?: { message: string; billingUrl?: string };
 }
 
@@ -1157,6 +1158,14 @@ export default function BulkPage() {
                               rows={3}
                               className="w-full text-sm border border-gray-300 rounded px-2 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-400 resize-none"
                             />
+                            {row.summaryError && (
+                              <p className="text-xs text-red-500 mt-1">
+                                {row.summaryError.message}
+                                {row.summaryError.billingUrl && (
+                                  <a href={row.summaryError.billingUrl} target="_blank" rel="noreferrer" className="underline ml-1 whitespace-nowrap">Add credits →</a>
+                                )}
+                              </p>
+                            )}
                           </div>
 
                           <div>

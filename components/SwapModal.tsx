@@ -36,11 +36,15 @@ export default function SwapModal({ type, slotIndex, slotLabel, productType, pro
         if (productType) params.set("productType", productType);
         if (style) params.set("productStyle", style);
         if (type === "why") params.set("category", WCT_CATEGORY_MAP[slotIndex]);
-        return fetch(`/api/library?${params}`).then((r) => r.json());
+        return fetch(`/api/library?${params}`)
+          .then((r) => r.json())
+          .catch(() => ({ entries: [] }));
       })
     ).then((results) => {
       const seen = new Set<string>();
-      const merged = results.flatMap((d) => d.entries as (WhyChooseThisEntry | PerfectForEntry)[])
+      const merged = results
+        .flatMap((d) => (d.entries ?? []) as (WhyChooseThisEntry | PerfectForEntry)[])
+        .filter((e): e is WhyChooseThisEntry | PerfectForEntry => !!e && !!e.id)
         .filter((e) => { if (seen.has(e.id)) return false; seen.add(e.id); return true; });
       setEntries(merged);
       setLoading(false);

@@ -39,82 +39,103 @@ export async function POST(req: NextRequest) {
 
   const today = new Date();
 
-  const rows = await Promise.all(
-    products.map(async ({ product, metafields }) => {
-      const productId = product.id;
+  // Map phrase text → current icon so stale stored icons are corrected on display
+  const pfIconByPhrase = new Map(pfLibrary.map((e) => [e.phrase, e.icon]));
 
-      const hasContent = !!(
-        metafields.productSummary &&
-        metafields.whyChooseThis.bullet1 &&
-        metafields.perfectFor.bullet1
-      );
+  function syncedPfIcons(bullets: [string, string, string, string], storedIcons: [string, string, string, string]): [string, string, string, string] {
+    return bullets.map((phrase, i) => pfIconByPhrase.get(phrase) ?? storedIcons[i]) as [string, string, string, string];
+  }
 
-      if (hasContent) {
-        return {
-          productId,
-          title: product.title,
-          imageUrl: product.featuredImage?.url ?? null,
-          productTypePt: metafields.productTypePt,
-          productStylePt: metafields.productStylePt,
-          summary: metafields.productSummary,
-          wctBullets: [
-            metafields.whyChooseThis.bullet1,
-            metafields.whyChooseThis.bullet2,
-            metafields.whyChooseThis.bullet3,
-            metafields.whyChooseThis.bullet4,
-          ] as [string, string, string, string],
-          pfBullets: [
-            metafields.perfectFor.bullet1,
-            metafields.perfectFor.bullet2,
-            metafields.perfectFor.bullet3,
-            metafields.perfectFor.bullet4,
-          ] as [string, string, string, string],
-          pfIcons: [
-            metafields.perfectFor.icon1,
-            metafields.perfectFor.icon2,
-            metafields.perfectFor.icon3,
-            metafields.perfectFor.icon4,
-          ] as [string, string, string, string],
-          source: "existing" as const,
-          skip: false,
-          regenerating: false,
-        };
-      }
+  const rows = [];
+  for (const { product, metafields } of products) {
+    const productId = product.id;
 
-      // No content — generate it only if type + style are set
-      const type   = metafields.productTypePt;
-      const styles = metafields.productStylePt
-        ? metafields.productStylePt.split(",").map((s) => s.trim()).filter(Boolean)
-        : [];
+    const hasSummary = !!metafields.productSummary;
+    const hasWct = !!metafields.whyChooseThis.bullet1;
+    const hasPf = !!metafields.perfectFor.bullet1;
 
-      if (!type || styles.length === 0) {
-        return {
-          productId,
-          title: product.title,
-          imageUrl: product.featuredImage?.url ?? null,
-          productTypePt: type,
-          productStylePt: metafields.productStylePt,
-          summary: "",
-          wctBullets: ["", "", "", ""] as [string, string, string, string],
-          pfBullets:  ["", "", "", ""] as [string, string, string, string],
-          pfIcons:    ["", "", "", ""] as [string, string, string, string],
-          source: "needs-classify" as const,
-          skip: true,
-          regenerating: false,
-        };
-      }
-
-      const ctx = {
+    // Everything already populated — return as-is
+    if (hasSummary && hasWct && hasPf) {
+      rows.push({
+        productId,
         title: product.title,
-        descriptionText: product.descriptionHtml.replace(/<[^>]+>/g, " ").trim(),
-        productType: type,
-        productStyles: styles,
-      };
+        imageUrl: product.featuredImage?.url ?? null,
+        productTypePt: metafields.productTypePt,
+        productStylePt: metafields.productStylePt,
+        summary: metafields.productSummary,
+        wctBullets: [
+          metafields.whyChooseThis.bullet1,
+          metafields.whyChooseThis.bullet2,
+          metafields.whyChooseThis.bullet3,
+          metafields.whyChooseThis.bullet4,
+        ] as [string, string, string, string],
+        pfBullets: [
+          metafields.perfectFor.bullet1,
+          metafields.perfectFor.bullet2,
+          metafields.perfectFor.bullet3,
+          metafields.perfectFor.bullet4,
+        ] as [string, string, string, string],
+        pfIcons: syncedPfIcons(
+          [metafields.perfectFor.bullet1, metafields.perfectFor.bullet2, metafields.perfectFor.bullet3, metafields.perfectFor.bullet4],
+          [metafields.perfectFor.icon1, metafields.perfectFor.icon2, metafields.perfectFor.icon3, metafields.perfectFor.icon4]
+        ),
+        source: "existing" as const,
+        skip: false,
+        regenerating: false,
+      });
+      continue;
+    }
 
-      const wct = assignWhyChooseThis(ctx, wctLibrary);
-      const pf  = assignPerfectFor(ctx, pfLibrary, settings.dateRanges, today, undefined, undefined, settings.interestKeywords);
+    // Need type + style to generate any missing content
+    const type   = metafields.productTypePt;
+    const styles = metafields.productStylePt
+      ? metafields.productStylePt.split(",").map((s) => s.trim()).filter(Boolean)
+      : [];
 
-      let summary = "";
+    if (!type || styles.length === 0) {
+      rows.push({
+        productId,
+        title: product.title,
+        imageUrl: product.featuredImage?.url ?? null,
+        productTypePt: type,
+        productStylePt: metafields.productStylePt,
+        summary: metafields.productSummary,
+        wctBullets: [
+          metafields.whyChooseThis.bullet1,
+          metafields.whyChooseThis.bullet2,
+          metafields.whyChooseThis.bullet3,
+          metafields.whyChooseThis.bullet4,
+        ] as [string, string, string, string],
+        pfBullets: [
+          metafields.perfectFor.bullet1,
+          metafields.perfectFor.bullet2,
+          metafields.perfectFor.bullet3,
+          metafields.perfectFor.bullet4,
+        ] as [string, string, string, string],
+        pfIcons: syncedPfIcons(
+          [metafields.perfectFor.bullet1, metafields.perfectFor.bullet2, metafields.perfectFor.bullet3, metafields.perfectFor.bullet4],
+          [metafields.perfectFor.icon1, metafields.perfectFor.icon2, metafields.perfectFor.icon3, metafields.perfectFor.icon4]
+        ),
+        source: "needs-classify" as const,
+        skip: true,
+        regenerating: false,
+      });
+      continue;
+    }
+
+    const ctx = {
+      title: product.title,
+      descriptionText: product.descriptionHtml.replace(/<[^>]+>/g, " ").trim(),
+      productType: type,
+      productStyles: styles,
+    };
+
+    const wct = hasWct ? null : assignWhyChooseThis(ctx, wctLibrary);
+    const pf  = hasPf  ? null : assignPerfectFor(ctx, pfLibrary, settings.dateRanges, today, undefined, undefined, settings.interestKeywords);
+
+    let summary = metafields.productSummary;
+    let summaryError: { message: string; billingUrl?: string } | undefined;
+    if (!hasSummary) {
       try {
         const summaryResult = await generateProductSummary({
           title: product.title,
@@ -122,35 +143,39 @@ export async function POST(req: NextRequest) {
           productType: type,
           productStyle: styles.join(", "),
         });
-        if (!("error" in summaryResult)) summary = summaryResult.options[0] ?? "";
+        if (!("error" in summaryResult)) {
+          summary = summaryResult.options[0] ?? "";
+        } else {
+          summaryError = { message: summaryResult.error.message, billingUrl: summaryResult.error.billingUrl };
+        }
       } catch { /* leave blank if AI fails */ }
+    }
 
-      return {
-        productId,
-        title: product.title,
-        imageUrl: product.featuredImage?.url ?? null,
-        productTypePt: type,
-        productStylePt: metafields.productStylePt,
-        summary,
-        wctBullets: [wct.bullet1, wct.bullet2, wct.bullet3, wct.bullet4] as [string, string, string, string],
-        pfBullets: [
-          pf.bullets[0] ?? "",
-          pf.bullets[1] ?? "",
-          pf.bullets[2] ?? "",
-          pf.bullets[3] ?? "",
-        ] as [string, string, string, string],
-        pfIcons: [
-          pf.icons[0] ?? "",
-          pf.icons[1] ?? "",
-          pf.icons[2] ?? "",
-          pf.icons[3] ?? "",
-        ] as [string, string, string, string],
-        source: "generated" as const,
-        skip: false,
-        regenerating: false,
-      };
-    })
-  );
+    rows.push({
+      productId,
+      title: product.title,
+      imageUrl: product.featuredImage?.url ?? null,
+      productTypePt: type,
+      productStylePt: metafields.productStylePt,
+      summary,
+      summaryError,
+      wctBullets: wct
+        ? [wct.bullet1, wct.bullet2, wct.bullet3, wct.bullet4] as [string, string, string, string]
+        : [metafields.whyChooseThis.bullet1, metafields.whyChooseThis.bullet2, metafields.whyChooseThis.bullet3, metafields.whyChooseThis.bullet4] as [string, string, string, string],
+      pfBullets: pf
+        ? [pf.bullets[0] ?? "", pf.bullets[1] ?? "", pf.bullets[2] ?? "", pf.bullets[3] ?? ""] as [string, string, string, string]
+        : [metafields.perfectFor.bullet1, metafields.perfectFor.bullet2, metafields.perfectFor.bullet3, metafields.perfectFor.bullet4] as [string, string, string, string],
+      pfIcons: pf
+        ? [pf.icons[0] ?? "", pf.icons[1] ?? "", pf.icons[2] ?? "", pf.icons[3] ?? ""] as [string, string, string, string]
+        : syncedPfIcons(
+            [metafields.perfectFor.bullet1, metafields.perfectFor.bullet2, metafields.perfectFor.bullet3, metafields.perfectFor.bullet4],
+            [metafields.perfectFor.icon1, metafields.perfectFor.icon2, metafields.perfectFor.icon3, metafields.perfectFor.icon4]
+          ),
+      source: "generated" as const,
+      skip: false,
+      regenerating: false,
+    });
+  }
 
   return NextResponse.json({ rows });
 }

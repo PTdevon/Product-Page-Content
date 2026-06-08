@@ -13,6 +13,8 @@
     "migrate-icons": "npx tsx --env-file .env.local scripts/migrate-icon-names.ts",
     "migrate-metafield-keys": "npx tsx --env-file .env.local scripts/migrate-metafield-keys.ts",
     "clear-product-summaries": "npx tsx --env-file .env.local scripts/clear-product-summaries.ts",
+    "clear-wct": "npx tsx --env-file .env.local scripts/clear-wct-content.ts",
+    "clear-pf": "npx tsx --env-file .env.local scripts/clear-pf-content.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
