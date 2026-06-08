@@ -59,9 +59,12 @@ function WCTEditModal({ entry, onClose, onSaved, taxonomy }: WCTEditModalProps) 
 
   const availableStyles = productType ? (taxonomy[productType] ?? []) : [];
   const hasEdit = !!entry?._edit;
-  const canFind = !isNew && (justSaved || (hasEdit && !entry._edit!.isNew));
+  const canFind = !isNew;
+  const [originalText] = useState(entry?.text ?? "");
+  const [originalSubtext] = useState(entry?.subtext ?? "");
+  const textChanged = text !== originalText || subtext !== originalSubtext;
 
-  async function handleSave() {
+  async function handleSave(): Promise<boolean> {
     setSaving(true);
     setSaveError("");
     const res = await fetch("/api/library/entry", {
@@ -80,20 +83,24 @@ function WCTEditModal({ entry, onClose, onSaved, taxonomy }: WCTEditModalProps) 
       }),
     });
     setSaving(false);
-    if (!res.ok) { setSaveError("Save failed"); return; }
+    if (!res.ok) { setSaveError("Save failed"); return false; }
     if (!isNew) {
       onSaved({ id: entry!.id, text, subtext });
       setJustSaved(true);
       setSavedConfirm(true);
       setTimeout(() => setSavedConfirm(false), 2000);
+      return true;
     } else {
       onSaved();
       onClose();
+      return true;
     }
   }
 
   async function handleFind() {
     if (!entry) return;
+    const ok = await handleSave();
+    if (!ok) return;
     setFindPhase("finding");
     setFoundProducts([]);
     try {
@@ -109,6 +116,10 @@ function WCTEditModal({ entry, onClose, onSaved, taxonomy }: WCTEditModalProps) 
 
   async function handleUpdate() {
     if (!entry || updatingRef.current) return;
+    if (textChanged) {
+      const ok = await handleSave();
+      if (!ok) return;
+    }
     updatingRef.current = true;
     setFindPhase("updating");
     setUpdateLog([]);
@@ -205,7 +216,7 @@ function WCTEditModal({ entry, onClose, onSaved, taxonomy }: WCTEditModalProps) 
               {findPhase === "finding" && "Searching products…"}
               {findPhase === "found" && `${foundProducts.length} product${foundProducts.length !== 1 ? "s" : ""} found`}
               {findPhase === "updating" && "Updating products…"}
-              {findPhase === "done" && updateResult && `Done — ${updateResult.updated} updated · ${updateResult.skipped} skipped · ${updateResult.failed} failed`}
+              {findPhase === "done" && updateResult && `Done — ${updateResult.updated} updated${updateResult.failed > 0 ? ` · ${updateResult.failed} failed` : ""}`}
             </div>
             <div ref={logRef} className="max-h-36 overflow-y-auto p-3 space-y-0.5 font-mono text-xs">
               {findPhase === "finding" && <div className="text-gray-400">Scanning products…</div>}
@@ -246,12 +257,14 @@ function WCTEditModal({ entry, onClose, onSaved, taxonomy }: WCTEditModalProps) 
             <>
               <button onClick={() => { setFindPhase("idle"); setFoundProducts([]); }}
                 className="px-4 py-2 text-sm border border-gray-300 rounded hover:bg-gray-50 transition-colors">Back</button>
-              <Tooltip content="Push this updated entry out to all the products that use it.">
-                <button onClick={handleUpdate} disabled={foundProducts.length === 0}
-                  className="px-4 py-2 text-sm bg-gray-900 text-white rounded hover:bg-gray-700 disabled:opacity-40 transition-colors">
-                  {foundProducts.length > 0 ? `Update All (${foundProducts.length})` : "Update All"}
-                </button>
-              </Tooltip>
+              {textChanged && (
+                <Tooltip content="Push this updated entry out to all the products that use it.">
+                  <button onClick={handleUpdate} disabled={foundProducts.length === 0}
+                    className="px-4 py-2 text-sm bg-gray-900 text-white rounded hover:bg-gray-700 disabled:opacity-40 transition-colors">
+                    {foundProducts.length > 0 ? `Update All (${foundProducts.length})` : "Update All"}
+                  </button>
+                </Tooltip>
+              )}
             </>
           )}
         </div>
@@ -305,6 +318,7 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
   const [removeApp, setRemoveApp] = useState<{ id: string; productType: string; productStyle: string } | null>(null);
   const [actionPhase, setActionPhase] = useState<ActionPhase>("idle");
   const [actionFoundCount, setActionFoundCount] = useState(0);
+  const [actionFoundProducts, setActionFoundProducts] = useState<{ id: string; title: string }[]>([]);
   const [actionReplacement, setActionReplacement] = useState("");
   const [actionReplacementPhrases, setActionReplacementPhrases] = useState<{ phraseId: string; phrase: string }[]>([]);
   const [actionLog, setActionLog] = useState<{ title: string; status: "updated" | "error" }[]>([]);
@@ -314,12 +328,18 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
   const actionRef = useRef(false);
 
   const hasEdit = !!entry?._edit;
-  const phraseChanged = phrase !== (entry?.phrase ?? "");
-  const canFind = !isNew && (justSaved || phraseChanged);
+  const [originalPhrase] = useState(entry?.phrase ?? "");
+  const [originalIcon] = useState(entry?.icon ?? "");
+  const [originalFilterByInterest] = useState(entry?.filterByInterest ?? false);
+  const [contentSavedNeedsUpdate, setContentSavedNeedsUpdate] = useState(false);
+  const [showKeywordsReminder, setShowKeywordsReminder] = useState(false);
+  const phraseChangedSinceOpen = phrase !== originalPhrase;
+  const iconChangedSinceOpen = currentIcon !== originalIcon;
+  const canFind = !isNew;
 
   // ── Shared helper: stream a replace operation ──────────────────────────────
-  async function streamReplace(oldPhrase: string, newPhrase: string, filterType?: string, filterStyle?: string) {
-    if (actionRef.current) return;
+  async function streamReplace(oldPhrase: string, newPhrase: string, filterType?: string, filterStyle?: string): Promise<boolean> {
+    if (actionRef.current) return false;
     actionRef.current = true;
     setActionPhase("replacing");
     setActionLog([]);
@@ -329,7 +349,7 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ oldPhrase, newPhrase, productType: filterType, productStyle: filterStyle }),
     });
-    if (!res.ok || !res.body) { actionRef.current = false; setActionPhase("confirm"); return; }
+    if (!res.ok || !res.body) { actionRef.current = false; setActionPhase("confirm"); return false; }
 
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
@@ -360,6 +380,7 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
       }
     } catch { /* network error */ } finally { actionRef.current = false; }
     if (!receivedDone) setActionPhase("confirm");
+    return receivedDone;
   }
 
   // ── Delete phrase flow ──────────────────────────────────────────────────────
@@ -391,6 +412,7 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
     replacements.sort((a, b) => a.phrase.localeCompare(b.phrase));
 
     setActionFoundCount(findData.products?.length ?? 0);
+    setActionFoundProducts(findData.products ?? []);
     setActionReplacementPhrases(replacements);
     setActionPhase("confirm");
   }
@@ -447,6 +469,7 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
     replacements.sort((a, b) => a.phrase.localeCompare(b.phrase));
 
     setActionFoundCount(findData.products?.length ?? 0);
+    setActionFoundProducts(findData.products ?? []);
     setActionReplacementPhrases(replacements);
     setActionPhase("confirm");
   }
@@ -455,13 +478,19 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
     if (!removeApp || !entry) return;
     const replacement = actionReplacementPhrases.find((p) => p.phraseId === actionReplacement);
     if (actionFoundCount > 0 && replacement) {
-      await streamReplace(entry.phrase, replacement.phrase, removeApp.productType, removeApp.productStyle);
-      if (actionPhase !== "done") return;
+      const ok = await streamReplace(entry.phrase, replacement.phrase, removeApp.productType, removeApp.productStyle);
+      if (!ok) return;
     }
-    await fetch("/api/library/entry", {
+    const res = await fetch("/api/library/entry", {
       method: "DELETE", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ type: "pf-applicability", id: removeApp.id }),
     });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({})) as { error?: string };
+      setActionError(data.error ?? "Failed to remove assignment");
+      setActionPhase("error");
+      return;
+    }
     setMode("edit");
     setRemoveApp(null);
     setActionPhase("idle");
@@ -474,16 +503,17 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
     setActionPhase("idle");
     setActionLog([]);
     setActionResult(null);
+    setActionFoundProducts([]);
   }
 
-  async function handleSave() {
+  async function handleSave(): Promise<boolean> {
     setSaving(true);
     setSaveError("");
 
     if (isNew) {
-      if (!phrase.trim()) { setSaveError("Enter a phrase"); setSaving(false); return; }
-      if (!category) { setSaveError("Select a category"); setSaving(false); return; }
-      if (typeStylePairs.length === 0) { setSaveError("Add at least one product type"); setSaving(false); return; }
+      if (!phrase.trim()) { setSaveError("Enter a phrase"); setSaving(false); return false; }
+      if (!category) { setSaveError("Select a category"); setSaving(false); return false; }
+      if (typeStylePairs.length === 0) { setSaveError("Add at least one product type"); setSaving(false); return false; }
       const res = await fetch("/api/library/entry", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -493,10 +523,10 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
         }),
       });
       setSaving(false);
-      if (!res.ok) { setSaveError("Save failed"); return; }
+      if (!res.ok) { setSaveError("Save failed"); return false; }
       onSaved();
       onClose();
-      return;
+      return true;
     }
 
     // Edit existing phrase
@@ -517,31 +547,38 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
       }),
     });
     setSaving(false);
-    if (!res.ok) { setSaveError("Save failed"); return; }
+    if (!res.ok) { setSaveError("Save failed"); return false; }
     const previousPhrase = entry!._edit?.searchPhrase ?? entry!.phrase;
     if (phrase.trim() !== previousPhrase) setJustSaved(true);
     setSavedConfirm(true);
     setTimeout(() => setSavedConfirm(false), 2000);
+    if (phraseChangedSinceOpen || iconChangedSinceOpen) setContentSavedNeedsUpdate(true);
+    if (filterByInterest && !originalFilterByInterest) setShowKeywordsReminder(true);
     onSaved();
+    return true;
   }
 
   async function handleIconSelect(icon: string) {
     setCurrentIcon(icon);
     setShowIconPicker(false);
-    // If editing an existing phrase, immediately persist the icon change
     if (!isNew && entry) {
-      await fetch("/api/library", {
+      const res = await fetch("/api/library", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phraseId: entry.id, icon }),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string };
+        setSaveError(data.error ?? "Failed to save icon");
+        return;
+      }
       onSaved();
     }
   }
 
   async function handleAddAssignment() {
     if (!addingType || !entry) return;
-    await fetch("/api/library/entry", {
+    const res = await fetch("/api/library/entry", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -549,22 +586,24 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
         entry: { phraseId: entry.id, productType: addingType, productStyle: addingStyle || "ALL" },
       }),
     });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({})) as { error?: string };
+      setSaveError(data.error ?? "Failed to add type");
+      return;
+    }
+    setSaveError("");
     setAddingType("");
     setAddingStyle("");
     onSaved();
   }
 
-  async function handleRemoveAssignment(appId: string) {
-    await fetch("/api/library/entry", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "pf-applicability", id: appId }),
-    });
-    onSaved();
-  }
-
   async function handleFind() {
     if (!entry) return;
+    if (phraseChangedSinceOpen) {
+      const ok = await handleSave();
+      if (!ok) return;
+    }
+    setContentSavedNeedsUpdate(false);
     setFindPhase("finding");
     setFoundProducts([]);
     try {
@@ -580,6 +619,10 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
 
   async function handleUpdate() {
     if (!entry || updatingRef.current) return;
+    if (phraseChangedSinceOpen) {
+      const ok = await handleSave();
+      if (!ok) return;
+    }
     updatingRef.current = true;
     setFindPhase("updating");
     setUpdateLog([]);
@@ -620,6 +663,10 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
     onSaved();
     if (!receivedDone) setFindPhase("found");
   }
+
+  // Sets for Bug 1: disable already-used type/style combos
+  const usedPairs = new Set(typeStylePairs.map((p) => `${p.type}|${p.style}`));
+  const usedExistingPairs = new Set((entry?.applicabilities ?? []).map((a) => `${a.productType}|${a.productStyle}`));
 
   return (
     <>
@@ -704,14 +751,21 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
                   <div className="flex flex-wrap gap-2">
                     <select value={addingType} onChange={(e) => { setAddingType(e.target.value); setAddingStyle(""); }}
                       className="flex-1 min-w-0 border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                      <option value="">Add type…</option>
+                      <option value="">Add Product Type…</option>
                       {Object.keys(taxonomy).map((t) => <option key={t} value={t}>{t}</option>)}
                     </select>
                     {addingStyles.length > 0 && (
                       <select value={addingStyle} onChange={(e) => setAddingStyle(e.target.value)}
                         className="flex-1 min-w-0 border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                         <option value="">All styles</option>
-                        {addingStyles.map((s) => <option key={s} value={s}>{s}</option>)}
+                        {addingStyles.map((s) => {
+                          const used = usedPairs.has(`${addingType}|${s}`);
+                          return (
+                            <option key={s} value={s} disabled={used} style={used ? { color: "#d1d5db" } : undefined}>
+                              {s}{used ? " (already added)" : ""}
+                            </option>
+                          );
+                        })}
                       </select>
                     )}
                     {addingType && (
@@ -724,7 +778,7 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
               </div>
             ) : (
               <div>
-                <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-2">Used by</label>
+                <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-2">Product Types / Styles</label>
                 <div className="space-y-1.5">
                   {(entry?.applicabilities ?? []).map((app) => (
                     <div key={app.id} className="flex items-center gap-2 text-sm">
@@ -741,7 +795,7 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
                 <div className="flex flex-wrap gap-2 mt-2">
                   <select value={addingType} onChange={(e) => { setAddingType(e.target.value); setAddingStyle(""); }}
                     className="flex-1 min-w-0 border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <option value="">Add type…</option>
+                    <option value="">Add Product Type…</option>
                     {Object.keys(taxonomy).map((t) => {
                       const fullyAssigned = entry?.applicabilities.some((a) => a.productType === t && a.productStyle === "ALL");
                       return (
@@ -755,7 +809,14 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
                     <select value={addingStyle} onChange={(e) => setAddingStyle(e.target.value)}
                       className="flex-1 min-w-0 border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                       <option value="">All styles</option>
-                      {addingStyles.map((s) => <option key={s} value={s}>{s}</option>)}
+                      {addingStyles.map((s) => {
+                        const used = usedExistingPairs.has(`${addingType}|${s}`);
+                        return (
+                          <option key={s} value={s} disabled={used} style={used ? { color: "#d1d5db" } : undefined}>
+                            {s}{used ? " (already added)" : ""}
+                          </option>
+                        );
+                      })}
                     </select>
                   )}
                   {addingType && (
@@ -797,6 +858,11 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
                           {mode === "remove-assignment" ? ` for ${removeApp?.productType} · ${removeApp?.productStyle}` : ""}.
                           Choose a replacement:
                         </p>
+                        <div className="max-h-28 overflow-y-auto font-mono text-xs space-y-0.5 border border-gray-100 rounded p-2 bg-gray-50">
+                          {actionFoundProducts.map((p) => (
+                            <div key={p.id} className="text-gray-700">{p.title}</div>
+                          ))}
+                        </div>
                         <select
                           value={actionReplacement}
                           onChange={(e) => setActionReplacement(e.target.value)}
@@ -842,12 +908,6 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
                         {actionResult.failed > 0 && ` · ${actionResult.failed} failed`}
                       </p>
                     )}
-                    {actionPhase === "done" && mode === "remove-assignment" && (
-                      <button onClick={confirmRemoveAssignment}
-                        className="px-4 py-2 bg-red-600 text-white text-sm rounded hover:bg-red-700 transition-colors">
-                        Remove assignment
-                      </button>
-                    )}
                   </>
                 )}
               </div>
@@ -861,7 +921,7 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
                 {findPhase === "finding" && "Searching products…"}
                 {findPhase === "found" && `${foundProducts.length} product${foundProducts.length !== 1 ? "s" : ""} found`}
                 {findPhase === "updating" && "Updating products…"}
-                {findPhase === "done" && updateResult && `Done — ${updateResult.updated} updated · ${updateResult.skipped} skipped · ${updateResult.failed} failed`}
+                {findPhase === "done" && updateResult && `Done — ${updateResult.updated} updated${updateResult.failed > 0 ? ` · ${updateResult.failed} failed` : ""}`}
               </div>
               <div ref={logRef} className="max-h-36 overflow-y-auto p-3 space-y-0.5 font-mono text-xs">
                 {findPhase === "finding" && <div className="text-gray-400">Scanning products…</div>}
@@ -876,7 +936,24 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
             </div>
           )}
 
-          <div className="px-6 py-4 border-t border-gray-100 flex items-center gap-3 shrink-0">
+          <div className="px-6 py-4 border-t border-gray-100 flex flex-col gap-2 shrink-0">
+            {findPhase === "idle" && mode === "edit" && contentSavedNeedsUpdate && (
+              <div className="px-3 py-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800 flex items-center justify-between">
+                <span>Saved — remember to update products using this phrase.</span>
+                <button onClick={handleFind} className="ml-3 font-medium underline hover:no-underline whitespace-nowrap">
+                  Find &amp; Update →
+                </button>
+              </div>
+            )}
+            {findPhase === "idle" && mode === "edit" && showKeywordsReminder && (
+              <div className="px-3 py-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-800 flex items-center justify-between">
+                <span>Interest filter enabled — add keywords on the Interest Filter page.</span>
+                <a href="/settings/keywords" className="ml-3 font-medium underline hover:no-underline whitespace-nowrap">
+                  Go to Keywords →
+                </a>
+              </div>
+            )}
+            <div className="flex items-center gap-3">
             <button onClick={onClose} disabled={findPhase === "updating" || actionPhase === "replacing"}
               className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-40 transition-colors">
               {findPhase === "done" ? "Close" : "Cancel"}
@@ -909,14 +986,17 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
               <>
                 <button onClick={() => { setFindPhase("idle"); setFoundProducts([]); }}
                   className="px-4 py-2 text-sm border border-gray-300 rounded hover:bg-gray-50 transition-colors">Back</button>
-                <Tooltip content="Push this updated phrase out to all the products that use it — their Shopify content will update immediately.">
-                  <button onClick={handleUpdate} disabled={foundProducts.length === 0}
-                    className="px-4 py-2 text-sm bg-gray-900 text-white rounded hover:bg-gray-700 disabled:opacity-40 transition-colors">
-                    {foundProducts.length > 0 ? `Update All (${foundProducts.length})` : "Update All"}
-                  </button>
-                </Tooltip>
+                {(phraseChangedSinceOpen || iconChangedSinceOpen) && (
+                  <Tooltip content="Push this updated phrase out to all the products that use it — their Shopify content will update immediately.">
+                    <button onClick={handleUpdate} disabled={foundProducts.length === 0}
+                      className="px-4 py-2 text-sm bg-gray-900 text-white rounded hover:bg-gray-700 disabled:opacity-40 transition-colors">
+                      {foundProducts.length > 0 ? `Update All (${foundProducts.length})` : "Update All"}
+                    </button>
+                  </Tooltip>
+                )}
               </>
             )}
+            </div>
           </div>
         </div>
       </div>
@@ -1061,7 +1141,7 @@ function LibraryPageInner() {
         <WCTEditModal
           entry={addingNew ? null : editWctTarget!}
           onClose={closeModal}
-          onSaved={() => { fetchEntries(); closeModal(); }}
+          onSaved={() => fetchEntries()}
           taxonomy={taxonomy}
         />
       )}
@@ -1091,18 +1171,25 @@ function WctTable({ entries, loading, onEdit }: { entries: WCTRow[]; loading: bo
           <th className="px-4 py-3 text-left font-medium text-gray-600 text-xs uppercase tracking-wide w-40">Category</th>
           <th className="px-4 py-3 text-left font-medium text-gray-600 text-xs uppercase tracking-wide">Text</th>
           <th className="px-4 py-3 text-left font-medium text-gray-600 text-xs uppercase tracking-wide">Subtext</th>
+          <th className="w-8"></th>
         </tr>
       </thead>
       <tbody className="divide-y divide-gray-100">
-        {loading && <tr><td colSpan={5} className="px-4 py-10 text-center text-gray-400">Loading…</td></tr>}
-        {!loading && entries.length === 0 && <tr><td colSpan={5} className="px-4 py-10 text-center text-gray-400">No entries found</td></tr>}
+        {loading && <tr><td colSpan={6} className="px-4 py-10 text-center text-gray-400">Loading…</td></tr>}
+        {!loading && entries.length === 0 && <tr><td colSpan={6} className="px-4 py-10 text-center text-gray-400">No entries found</td></tr>}
         {entries.map((e) => (
-          <tr key={e.id} onClick={() => onEdit(e)} className={`cursor-pointer hover:bg-gray-50 ${e._edit && !e._edit.isNew ? "bg-amber-50" : ""}`}>
+          <tr key={e.id} onClick={() => onEdit(e)} className="group cursor-pointer hover:bg-gray-50">
             <td className="px-4 py-3 text-gray-500">{e.productType}</td>
             <td className="px-4 py-3 text-gray-500">{e.productStyle}</td>
             <td className="px-4 py-3 w-40"><span className="px-2 py-0.5 rounded-full text-sm bg-blue-50 text-blue-700 whitespace-nowrap">{e.category}</span></td>
             <td className="px-4 py-3 font-medium text-gray-900">{e.text}</td>
             <td className="px-4 py-3 text-gray-500">{e.subtext}</td>
+            <td className="px-4 py-3 text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+              </svg>
+            </td>
           </tr>
         ))}
       </tbody>
@@ -1153,14 +1240,14 @@ function PfTable({ phrases, loading, onEdit }: { phrases: PFPhraseRow[]; loading
           <SortHeader col="phrase" label="Phrase" />
           <SortHeader col="category" label="Category" />
           <SortHeader col="timeSensitive" label="Seasonal" />
-          <th className="px-4 py-3 text-left font-medium text-gray-600 text-xs uppercase tracking-wide">Used by</th>
+          <th className="px-4 py-3 text-left font-medium text-gray-600 text-xs uppercase tracking-wide">Product Types</th>
         </tr>
       </thead>
       <tbody className="divide-y divide-gray-100">
         {loading && <tr><td colSpan={5} className="px-4 py-10 text-center text-gray-400">Loading…</td></tr>}
         {!loading && sorted.length === 0 && <tr><td colSpan={5} className="px-4 py-10 text-center text-gray-400">No phrases found</td></tr>}
         {sorted.map((p) => (
-          <tr key={p.id} onClick={() => onEdit(p)} className={`cursor-pointer hover:bg-gray-50 ${p._edit && !p._edit.isNew ? "bg-amber-50" : ""}`}>
+          <tr key={p.id} onClick={() => onEdit(p)} className="cursor-pointer hover:bg-gray-50">
             <td className="px-4 py-3"><IconImg icon={p.icon} size={20} /></td>
             <td className="px-4 py-3 font-medium text-gray-900">{p.phrase}</td>
             <td className="px-4 py-3"><span className="px-2 py-0.5 rounded-full text-sm bg-purple-50 text-purple-700">{p.category}</span></td>

@@ -21,6 +21,10 @@ const SCAN_QUERY = `
           pf2:     metafield(namespace: "perfect-for",     key: "perfect_bullet_2") { value }
           pf3:     metafield(namespace: "perfect-for",     key: "perfect_bullet_3") { value }
           pf4:     metafield(namespace: "perfect-for",     key: "perfect_bullet_4") { value }
+          pfIcon1: metafield(namespace: "perfect-for",     key: "icon_1") { value }
+          pfIcon2: metafield(namespace: "perfect-for",     key: "icon_2") { value }
+          pfIcon3: metafield(namespace: "perfect-for",     key: "icon_3") { value }
+          pfIcon4: metafield(namespace: "perfect-for",     key: "icon_4") { value }
         }
         cursor
       }
@@ -35,6 +39,7 @@ type ScanNode = {
   typePt: MF; stylePt: MF;
   wct1: MF; wct2: MF; wct3: MF; wct4: MF;
   pf1: MF; pf2: MF; pf3: MF; pf4: MF;
+  pfIcon1: MF; pfIcon2: MF; pfIcon3: MF; pfIcon4: MF;
 };
 type ScanResult = {
   products: { edges: { node: ScanNode; cursor: string }[]; pageInfo: { hasNextPage: boolean } };
@@ -71,14 +76,8 @@ export async function POST(req: NextRequest) {
           return;
         }
 
-        const oldFormatted = wctEntry.searchFormatted;
         const newFormatted = formatWCT(wctEntry.text, wctEntry.subtext);
-
-        if (!oldFormatted) {
-          send({ type: "done", total: 0, updated: 0, skipped: 0, failed: 0 });
-          controller.close();
-          return;
-        }
+        const oldFormatted = wctEntry.searchFormatted || newFormatted;
 
         while (true) {
           const data: ScanResult = await shopifyGraphQL<ScanResult>(SCAN_QUERY, { first: 250, after: cursor });
@@ -133,6 +132,7 @@ export async function POST(req: NextRequest) {
 
         const oldPhrase = found.edit.searchPhrase;
         const newPhrase = found.phrase.phrase;
+        const newIcon = found.edit?.icon ?? found.phrase.icon;
 
         while (true) {
           const data: ScanResult = await shopifyGraphQL<ScanResult>(SCAN_QUERY, { first: 250, after: cursor });
@@ -147,11 +147,18 @@ export async function POST(req: NextRequest) {
             if (!hasMatch) { skipped++; continue; }
 
             try {
+              const icons = [
+                node.pfIcon1?.value ?? "", node.pfIcon2?.value ?? "",
+                node.pfIcon3?.value ?? "", node.pfIcon4?.value ?? "",
+              ];
               const newBullets = bullets.map((b) => b === oldPhrase ? newPhrase : b);
+              const newIcons = bullets.map((b, i) => b === oldPhrase ? newIcon : icons[i]);
               await setProductMetafields(node.id, {
                 perfectFor: {
                   bullet1: newBullets[0], bullet2: newBullets[1],
                   bullet3: newBullets[2], bullet4: newBullets[3],
+                  icon1: newIcons[0], icon2: newIcons[1],
+                  icon3: newIcons[2], icon4: newIcons[3],
                 },
               });
               updated++;
