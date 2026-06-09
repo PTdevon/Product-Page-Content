@@ -101,6 +101,7 @@ export default function BulkPage() {
   const [contentPhase, setContentPhase] = useState<ContentPhase>("idle");
   const [contentSaveResult, setContentSaveResult] = useState<{ saved: number; failed: number } | null>(null);
   const [contentError, setContentError] = useState<string | null>(null);
+  const [contentHasSaved, setContentHasSaved] = useState(false);
   const [wctEditing, setWctEditing] = useState<{ productId: string; slotIndex: number; text: string; subtext: string } | null>(null);
   const [bulkSwapModal, setBulkSwapModal] = useState<{ productId: string; type: "why" | "perfect"; slotIndex: number } | null>(null);
   const [pfAvailability, setPfAvailability] = useState<Record<string, boolean>>({});
@@ -112,6 +113,7 @@ export default function BulkPage() {
   const [classifyPhase, setClassifyPhase] = useState<ClassifyPhase>("idle");
   const [classifySaveResult, setClassifySaveResult] = useState<{ saved: number; failed: number } | null>(null);
   const [classifyError, setClassifyError] = useState<string | null>(null);
+  const [classifyHasSaved, setClassifyHasSaved] = useState(false);
   const classifyPanelRef = useRef<HTMLDivElement>(null);
 
   // Total count
@@ -515,17 +517,19 @@ export default function BulkPage() {
       setClassifySaveResult({ saved: data.saved, failed: data.failed });
       const savedIds = new Set(assignments.map((a) => a.productId));
       setClassifyRows((prev) => prev.map((r) => savedIds.has(r.productId) ? { ...r, source: "existing", dirty: false } : r));
-      setClassifyPhase("saved");
+      setClassifyHasSaved(true);
+      setClassifyPhase("review");
     } catch {
       setClassifyPhase("review");
     }
   }
 
   function handleCloseClassify() {
-    const wasSaved = classifyPhase === "saved";
+    const wasSaved = classifyHasSaved;
     setClassifyPhase("idle");
     setClassifyRows([]);
     setClassifySaveResult(null);
+    setClassifyHasSaved(false);
     if (wasSaved) {
       setSelectedIds(new Set());
       cursorRef.current = null;
@@ -688,17 +692,19 @@ export default function BulkPage() {
       setContentSaveResult(data);
       const savedIds = new Set(toSave.map((r) => r.productId));
       setContentRows((prev) => prev.map((r) => savedIds.has(r.productId) ? { ...r, source: "existing", dirty: false } : r));
-      setContentPhase("saved");
+      setContentHasSaved(true);
+      setContentPhase("review");
     } catch {
       setContentPhase("review");
     }
   }
 
   function handleCloseContent() {
-    const wasSaved = contentPhase === "saved";
+    const wasSaved = contentHasSaved;
     setContentPhase("idle");
     setContentRows([]);
     setContentSaveResult(null);
+    setContentHasSaved(false);
     if (wasSaved) {
       setSelectedIds(new Set());
       cursorRef.current = null;
@@ -922,9 +928,8 @@ export default function BulkPage() {
                 <div className="px-4 py-3 border-b border-gray-200 bg-white flex items-center justify-between shrink-0">
                   <span className="font-medium text-sm text-gray-900">
                     {classifyPhase === "streaming" && "Classifying…"}
-                    {classifyPhase === "review" && "Review Classifications"}
                     {classifyPhase === "saving" && "Saving…"}
-                    {classifyPhase === "saved" && "Saved"}
+                    {(classifyPhase === "review") && "Review Classifications"}
                   </span>
                   <div className="flex items-center gap-2">
                     {classifySaveResult && (
@@ -1068,7 +1073,7 @@ export default function BulkPage() {
                     onClick={handleCloseClassify}
                     className="px-4 py-2 border border-gray-300 text-sm text-gray-600 rounded hover:bg-gray-50 transition-colors"
                   >
-                    {classifyPhase === "saved" ? "Close" : "Cancel"}
+                    {classifyHasSaved ? "Close" : "Cancel"}
                   </button>
                   <div className="flex-1" />
                   {(classifyPhase === "review" || classifyPhase === "streaming") && (
@@ -1094,9 +1099,8 @@ export default function BulkPage() {
                   <div className="px-4 py-3 border-b border-gray-200 bg-white flex items-center justify-between shrink-0">
                     <span className="font-medium text-sm text-gray-900">
                       {contentPhase === "loading" && "Loading content…"}
-                      {contentPhase === "review" && `Review Content (${contentRows.length})`}
                       {contentPhase === "saving" && "Saving…"}
-                      {contentPhase === "saved" && "Saved"}
+                      {contentPhase === "review" && `Review Content (${contentRows.length})`}
                     </span>
                     {contentSaveResult && (
                       <span className="text-xs text-gray-500">
@@ -1363,16 +1367,16 @@ export default function BulkPage() {
                       onClick={handleCloseContent}
                       className="px-4 py-2 border border-gray-300 text-sm text-gray-600 rounded hover:bg-gray-50 transition-colors"
                     >
-                      {contentPhase === "saved" ? "Close" : "Cancel"}
+                      {contentHasSaved ? "Close" : "Cancel"}
                     </button>
                     <div className="flex-1" />
-                    {(contentPhase === "review" || contentPhase === "saving") && (
+                    {contentPhase !== "idle" && contentPhase !== "loading" && (
                       <button
                         onClick={handleSaveContent}
                         disabled={saveCount === 0 || contentPhase === "saving"}
                         className="px-4 py-2 bg-gray-900 text-white text-sm rounded disabled:opacity-40 hover:bg-gray-700 transition-colors"
                       >
-                        {saveCount > 0 ? `Save (${saveCount})` : "Save"}
+                        {contentPhase === "saving" ? "Saving…" : saveCount > 0 ? `Save (${saveCount})` : "Save"}
                       </button>
                     )}
                   </div>

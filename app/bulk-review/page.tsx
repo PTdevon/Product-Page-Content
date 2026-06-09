@@ -365,8 +365,6 @@ function RowEditor({
           <a
             href={`/products?id=${row.productId.split("/").pop()}`}
             className="text-xs text-blue-500 hover:text-blue-700"
-            target="_blank"
-            rel="noreferrer"
           >
             Edit →
           </a>
@@ -403,8 +401,6 @@ function RowEditor({
           <a
             href={`/products?id=${row.productId.split("/").pop()}`}
             className="text-xs text-blue-500 hover:text-blue-700"
-            target="_blank"
-            rel="noreferrer"
           >
             Edit →
           </a>
@@ -428,8 +424,6 @@ function RowEditor({
           <a
             href={`/products?id=${row.productId.split("/").pop()}`}
             className="text-xs text-blue-500 hover:text-blue-700"
-            target="_blank"
-            rel="noreferrer"
           >
             Edit →
           </a>
