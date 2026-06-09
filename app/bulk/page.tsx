@@ -1213,16 +1213,18 @@ export default function BulkPage() {
                                   {Array.isArray(opts) && opts.length > 0 && (
                                     <div className="mt-1.5 space-y-1">
                                       {opts.map((opt, oi) => (
-                                        <button
-                                          key={oi}
-                                          onClick={() => {
-                                            setContentRows((rows) => rows.map((r) => r.productId === row.productId ? { ...r, summary: opt, dirty: true } : r));
-                                            setSummaryOptions((s) => { const n = { ...s }; delete n[row.productId]; return n; });
-                                          }}
-                                          className="w-full text-left text-sm text-gray-700 border border-gray-200 hover:border-blue-400 hover:bg-blue-50 rounded px-2 py-1.5 transition-colors"
-                                        >
-                                          {opt}
-                                        </button>
+                                        <div key={oi} className="flex items-start gap-2 border border-gray-200 rounded px-2 py-1.5">
+                                          <span className="flex-1 text-sm text-gray-700">{opt}</span>
+                                          <button
+                                            onClick={() => {
+                                              setContentRows((rows) => rows.map((r) => r.productId === row.productId ? { ...r, summary: opt, dirty: true } : r));
+                                              setSummaryOptions((s) => { const n = { ...s }; delete n[row.productId]; return n; });
+                                            }}
+                                            className="shrink-0 text-xs text-white bg-gray-800 hover:bg-gray-600 px-2 py-0.5 rounded transition-colors"
+                                          >
+                                            Use
+                                          </button>
+                                        </div>
                                       ))}
                                     </div>
                                   )}
