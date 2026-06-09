@@ -51,6 +51,7 @@ export async function GET(req: NextRequest) {
   const statusFilter = status;
 
   const queryParts: string[] = [];
+  queryParts.push(`-status:archived`);
   queryParts.push(`-tag:hidden`);
   queryParts.push(christmas ? `tag:christmas` : `-tag:christmas`);
   if (search) queryParts.push(`title:*${search}*`);

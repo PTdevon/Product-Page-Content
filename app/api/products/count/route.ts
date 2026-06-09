@@ -73,7 +73,7 @@ export async function GET(req: NextRequest) {
   const christmas    = searchParams.get("christmas") === "true";
   const statusFilter = status;
 
-  const queryParts = ["-tag:hidden", christmas ? "tag:christmas" : "-tag:christmas"];
+  const queryParts = ["-status:archived", "-tag:hidden", christmas ? "tag:christmas" : "-tag:christmas"];
   if (search) queryParts.push(`title:*${search}*`);
   if (bestseller) queryParts.push(`tag:*bestseller*`);
   const query = queryParts.join(" AND ");
