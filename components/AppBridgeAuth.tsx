@@ -22,8 +22,16 @@ function getStoredToken(): string | null {
 }
 
 async function fetchSessionToken(): Promise<string | null> {
-  const idToken = new URLSearchParams(window.location.search).get("id_token");
+  // Prefer App Bridge 4 CDN global — always returns a fresh, valid token
+  let idToken: string | null = null;
+  const shopify = (window as { shopify?: { idToken?: () => Promise<string> } }).shopify;
+  if (shopify?.idToken) {
+    try { idToken = await shopify.idToken(); } catch { /* fall through */ }
+  }
+  // Fall back to URL parameter (only present on initial load)
+  if (!idToken) idToken = new URLSearchParams(window.location.search).get("id_token");
   if (!idToken) return null;
+
   try {
     // Use the original (unpatched) fetch to avoid recursion
     const res = await (_originalFetch ?? fetch)(
