@@ -1206,9 +1206,9 @@ export default function BulkPage() {
                                       }
                                     }}
                                     disabled={disabled || isLoading}
-                                    className="mt-1.5 text-xs text-gray-400 hover:text-gray-700 border border-gray-200 hover:border-gray-300 px-2 py-0.5 rounded transition-colors disabled:opacity-40"
+                                    className="mt-1.5 px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded transition-colors disabled:opacity-40"
                                   >
-                                    {isLoading ? "Generating…" : "Generate options"}
+                                    {isLoading ? "Generating…" : "Generate Product Summary Options"}
                                   </button>
                                   {Array.isArray(opts) && opts.length > 0 && (
                                     <div className="mt-1.5 space-y-1">
@@ -1219,9 +1219,9 @@ export default function BulkPage() {
                                             setContentRows((rows) => rows.map((r) => r.productId === row.productId ? { ...r, summary: opt, dirty: true } : r));
                                             setSummaryOptions((s) => { const n = { ...s }; delete n[row.productId]; return n; });
                                           }}
-                                          className="w-full text-left text-xs text-gray-700 border border-gray-200 hover:border-blue-400 hover:bg-blue-50 rounded px-2 py-1.5 transition-colors"
+                                          className="w-full text-left text-sm text-gray-700 border border-gray-200 hover:border-blue-400 hover:bg-blue-50 rounded px-2 py-1.5 transition-colors"
                                         >
-                                          <span className="font-medium text-gray-400 mr-1">{oi + 1}.</span>{opt}
+                                          {opt}
                                         </button>
                                       ))}
                                     </div>
@@ -1299,7 +1299,7 @@ export default function BulkPage() {
                                 const icon = row.pfIcons[i];
                                 const disabled = row.skip || row.regenerating || contentPhase === "saving" || contentPhase === "saved";
                                 return (
-                                  <div key={i} className="bg-white border border-gray-200 rounded-md px-2.5 py-2 flex items-center gap-2">
+                                  <div key={i} className="bg-white border border-gray-200 rounded-md px-1.5 py-1.5 flex items-center gap-1.5">
                                     {!disabled && (
                                       <div className="flex flex-col gap-0.5 shrink-0">
                                         <button onClick={() => handlePfReorder(row.productId, i, -1)} disabled={i === 0}
