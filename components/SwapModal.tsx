@@ -27,15 +27,29 @@ export default function SwapModal({ type, slotIndex, slotLabel, productType, pro
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    const stylesToFetch = productStyles.length > 0 ? productStyles : [""];
-    const apiType = type === "why" ? "why" : "perfect";
+    if (type === "perfect") {
+      // Load all Perfect For phrases — not filtered by product type/style
+      fetch("/api/library?type=perfect")
+        .then((r) => r.json())
+        .catch(() => ({ entries: [] }))
+        .then((d) => {
+          const seen = new Set<string>();
+          const entries = ((d.entries ?? []) as PerfectForEntry[])
+            .filter((e): e is PerfectForEntry => !!e && !!e.phraseId)
+            .filter((e) => { if (seen.has(e.phraseId)) return false; seen.add(e.phraseId); return true; });
+          setEntries(entries);
+          setLoading(false);
+        });
+      return;
+    }
 
+    const stylesToFetch = productStyles.length > 0 ? productStyles : [""];
     Promise.all(
       stylesToFetch.map((style) => {
-        const params = new URLSearchParams({ type: apiType });
+        const params = new URLSearchParams({ type: "why" });
         if (productType) params.set("productType", productType);
         if (style) params.set("productStyle", style);
-        if (type === "why") params.set("category", WCT_CATEGORY_MAP[slotIndex]);
+        params.set("category", WCT_CATEGORY_MAP[slotIndex]);
         return fetch(`/api/library?${params}`)
           .then((r) => r.json())
           .catch(() => ({ entries: [] }));
@@ -43,8 +57,8 @@ export default function SwapModal({ type, slotIndex, slotLabel, productType, pro
     ).then((results) => {
       const seen = new Set<string>();
       const merged = results
-        .flatMap((d) => (d.entries ?? []) as (WhyChooseThisEntry | PerfectForEntry)[])
-        .filter((e): e is WhyChooseThisEntry | PerfectForEntry => !!e && !!e.id)
+        .flatMap((d) => (d.entries ?? []) as WhyChooseThisEntry[])
+        .filter((e): e is WhyChooseThisEntry => !!e && !!e.id)
         .filter((e) => { if (seen.has(e.id)) return false; seen.add(e.id); return true; });
       setEntries(merged);
       setLoading(false);
