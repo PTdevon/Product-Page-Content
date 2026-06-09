@@ -805,7 +805,7 @@ export default function BulkPage() {
       <div className="flex flex-1 overflow-hidden">
 
         {/* Product table */}
-        <div className={`flex flex-col ${showRightPanel ? "w-1/2 border-r border-gray-200" : "w-full"} overflow-hidden`}>
+        <div className={`flex flex-col ${showRightPanel ? "w-2/5 border-r border-gray-200" : "w-full"} overflow-hidden`}>
           <div className="flex-1 overflow-y-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
@@ -914,7 +914,7 @@ export default function BulkPage() {
 
         {/* Right panel — classify or assign progress */}
         {showRightPanel && (
-          <div className="w-1/2 flex flex-col bg-gray-50 overflow-hidden">
+          <div className="w-3/5 flex flex-col bg-gray-50 overflow-hidden">
 
             {/* ── Classify panel ── */}
             {showClassify && (
@@ -982,8 +982,16 @@ export default function BulkPage() {
                             )}
                           </td>
                           {/* Title */}
-                          <td className="px-3 py-2 text-gray-900 max-w-[120px]">
-                            <span className="line-clamp-2 leading-tight">{row.title}</span>
+                          <td className="px-3 py-2 text-gray-900">
+                            <div className="flex items-start gap-1.5">
+                              <span className="leading-tight text-sm">{row.title}</span>
+                              <a
+                                href={`https://admin.shopify.com/store/${(process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN ?? "penelopetom-office.myshopify.com").replace(".myshopify.com", "")}/products/${row.productId.split("/").pop()}`}
+                                target="_blank" rel="noreferrer"
+                                className="shrink-0 text-[10px] text-blue-500 hover:text-blue-700 leading-tight mt-0.5"
+                                title="Open in Shopify Admin"
+                              >↗</a>
+                            </div>
                             {row.error ? (
                               <span className="text-red-500 block mt-0.5">{row.error}</span>
                             ) : row.source === "existing" && !row.dirty ? (
@@ -1119,6 +1127,12 @@ export default function BulkPage() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
                               <span className="font-medium text-sm text-gray-900 truncate">{row.title}</span>
+                              <a
+                                href={`https://admin.shopify.com/store/${(process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN ?? "penelopetom-office.myshopify.com").replace(".myshopify.com", "")}/products/${row.productId.split("/").pop()}`}
+                                target="_blank" rel="noreferrer"
+                                className="shrink-0 text-[10px] text-blue-500 hover:text-blue-700"
+                                title="Open in Shopify Admin"
+                              >↗</a>
                               {row.source === "needs-classify"
                                 ? <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-600">Needs Type &amp; Style</span>
                                 : row.source === "existing" && !row.dirty
