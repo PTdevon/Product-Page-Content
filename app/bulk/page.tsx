@@ -1370,7 +1370,7 @@ export default function BulkPage() {
                       {contentHasSaved ? "Close" : "Cancel"}
                     </button>
                     <div className="flex-1" />
-                    {contentPhase !== "idle" && contentPhase !== "loading" && (
+                    {contentPhase !== "loading" && (
                       <button
                         onClick={handleSaveContent}
                         disabled={saveCount === 0 || contentPhase === "saving"}
