@@ -3,11 +3,9 @@ import { requireAuth } from "@/lib/auth";
 import { assignWhyChooseThis, assignPerfectFor } from "@/lib/assignment-engine";
 import { getSettings } from "@/lib/settings-store";
 import { getProductWithMetafields } from "@/lib/metafields";
-import wctData from "@/data/why-choose-this.json";
 import { getPfLibrary } from "@/lib/pf-store";
-import type { WhyChooseThisEntry, PerfectForEntry } from "@/lib/types";
-
-const wctLibrary = wctData as WhyChooseThisEntry[];
+import { getWctLibrary } from "@/lib/wct-store";
+import type { PerfectForEntry } from "@/lib/types";
 
 export async function POST(req: NextRequest) {
   const authError = await requireAuth(req);
@@ -29,7 +27,7 @@ export async function POST(req: NextRequest) {
   }
 
   const ctx = { title, descriptionText, productType, productStyles: styles };
-  const [settings, pfLibrary] = await Promise.all([getSettings(), getPfLibrary()]);
+  const [settings, pfLibrary, wctLibrary] = await Promise.all([getSettings(), getPfLibrary(), getWctLibrary()]);
 
   const wct = assignWhyChooseThis(ctx, wctLibrary);
   const pf = assignPerfectFor(ctx, pfLibrary, settings.dateRanges, new Date(), undefined, undefined, settings.interestKeywords);
