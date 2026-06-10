@@ -1236,7 +1236,7 @@ function WctTable({ entries, loading, onEdit }: { entries: WCTRow[]; loading: bo
   );
 }
 
-type PfSortCol = "phrase" | "category" | "timeSensitive" | "icon";
+type PfSortCol = "phrase" | "category" | "timeSensitive" | "icon" | "price";
 
 function PfTable({ phrases, loading, onEdit }: { phrases: PFPhraseRow[]; loading: boolean; onEdit: (e: PFPhraseRow) => void }) {
   const [sortCol, setSortCol] = useState<PfSortCol | null>(null);
@@ -1255,6 +1255,11 @@ function PfTable({ phrases, loading, onEdit }: { phrases: PFPhraseRow[]; loading
         if (sortCol === "category")     { av = a.category; bv = b.category; }
         if (sortCol === "timeSensitive"){ av = a.timeSensitive ?? ""; bv = b.timeSensitive ?? ""; }
         if (sortCol === "icon")         { av = a.icon; bv = b.icon; }
+        if (sortCol === "price") {
+          av = a.minPrice ?? a.maxPrice ?? 0;
+          bv = b.minPrice ?? b.maxPrice ?? 0;
+          return sortDir === "asc" ? (av as number) - (bv as number) : (bv as number) - (av as number);
+        }
         return sortDir === "asc" ? (av as string).localeCompare(bv as string) : (bv as string).localeCompare(av as string);
       })
     : phrases;
@@ -1279,7 +1284,7 @@ function PfTable({ phrases, loading, onEdit }: { phrases: PFPhraseRow[]; loading
           <SortHeader col="phrase" label="Phrase" />
           <SortHeader col="category" label="Category" />
           <SortHeader col="timeSensitive" label="Seasonal" />
-          <th className="px-4 py-3 text-left font-medium text-gray-600 text-xs uppercase tracking-wide">Price</th>
+          <SortHeader col="price" label="Price" />
           <th className="px-4 py-3 text-left font-medium text-gray-600 text-xs uppercase tracking-wide">Product Types</th>
         </tr>
       </thead>
