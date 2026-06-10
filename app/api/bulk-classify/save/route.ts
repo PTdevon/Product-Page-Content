@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { setProductMetafields } from "@/lib/metafields";
-import { PRODUCT_TAXONOMY } from "@/data/taxonomy";
+import { getTaxonomy } from "@/lib/taxonomy-store";
 
 interface Assignment {
   productId: string;
@@ -19,17 +19,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "No assignments provided" }, { status: 400 });
   }
 
+  const taxonomy = await getTaxonomy();
   let saved = 0;
   let failed = 0;
   const errors: { productId: string; message: string }[] = [];
 
   for (const { productId, type, styles } of assignments) {
-    if (!(type in PRODUCT_TAXONOMY)) {
+    if (!(type in taxonomy)) {
       failed++;
       errors.push({ productId, message: `Invalid type: "${type}"` });
       continue;
     }
-    const validStyles = styles.filter((s) => (PRODUCT_TAXONOMY[type] ?? []).includes(s));
+    const validStyles = styles.filter((s) => (taxonomy[type] ?? []).includes(s));
     if (validStyles.length === 0) {
       failed++;
       errors.push({ productId, message: `No valid styles for type "${type}"` });
