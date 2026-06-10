@@ -253,7 +253,6 @@ export default function BulkReviewPage() {
             <option value={10}>10 per page</option>
             <option value={25}>25 per page</option>
             <option value={50}>50 per page</option>
-            <option value={100}>100 per page</option>
           </select>
           {saveResult && (
             <span className={`text-sm ${saveResult.failed > 0 ? "text-red-600" : "text-green-600"}`}>
