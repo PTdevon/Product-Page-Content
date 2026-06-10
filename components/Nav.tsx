@@ -8,6 +8,7 @@ const MAIN_LINKS = [
   { href: "/library",     label: "Why Choose This",   key: "library" },
   { href: "/library?tab=perfect", label: "Perfect For", key: "perfect-for" },
   { href: "/product-types",       label: "Product Types", key: "product-types" },
+  { href: "/quality-report",      label: "Content Report", key: "quality-report" },
 ];
 
 const PF_SUB_LINKS = [
