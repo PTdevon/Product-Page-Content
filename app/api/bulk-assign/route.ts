@@ -79,6 +79,7 @@ export async function POST(req: NextRequest) {
             descriptionText: product.descriptionHtml.replace(/<[^>]+>/g, " ").trim(),
             productType: type,
             productStyles: styles,
+            price: product.price,
           };
 
           const wct = assignWhyChooseThis(ctx, wctLibrary);

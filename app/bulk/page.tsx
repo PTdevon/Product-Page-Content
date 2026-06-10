@@ -46,6 +46,7 @@ interface ContentRow {
   skip: boolean;
   regenerating: boolean;
   humanReviewed: boolean;
+  price?: number;
   summaryError?: { message: string; billingUrl?: string };
   regenerateError?: { message: string; billingUrl?: string };
 }
@@ -632,7 +633,8 @@ export default function BulkPage() {
       return;
     }
     const reviewedMap = new Map(selectedWithTypeStyle.map((p) => [p.id, p.humanReviewed ?? false]));
-    const rows: ContentRow[] = (data.rows ?? []).map((r) => ({ ...r, dirty: false, humanReviewed: reviewedMap.get(r.productId) ?? false }));
+    const priceMap = new Map(selectedWithTypeStyle.map((p) => [p.id, p.price]));
+    const rows: ContentRow[] = (data.rows ?? []).map((r) => ({ ...r, dirty: false, humanReviewed: reviewedMap.get(r.productId) ?? false, price: priceMap.get(r.productId) }));
     setContentRows(rows);
     setContentPhase("review");
   }
@@ -1430,6 +1432,7 @@ export default function BulkPage() {
             productType={row.productTypePt}
             productStyles={row.productStylePt ? row.productStylePt.split(",").map((s) => s.trim()).filter(Boolean) : []}
             selectedPhrases={bulkSwapModal.type === "perfect" ? row.pfBullets.filter(Boolean) : []}
+            productPrice={row.price}
             onSelect={handleBulkSwapSelect}
             onClose={() => setBulkSwapModal(null)}
           />

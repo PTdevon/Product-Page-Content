@@ -14,6 +14,7 @@ const LIST_PRODUCTS = `
           handle
           tags
           featuredImage { url }
+          priceRangeV2 { minVariantPrice { amount } }
           productTypePt: metafield(namespace: "product", key: "product_type") { value }
           productStylePt: metafield(namespace: "product", key: "product_style") { value }
           productSummary: metafield(namespace: "product", key: "product_summary") { value }
@@ -64,6 +65,7 @@ export async function GET(req: NextRequest) {
     node: {
       id: string; title: string; handle: string; tags: string[];
       featuredImage: { url: string } | null;
+      priceRangeV2: { minVariantPrice: { amount: string } } | null;
       productTypePt: MF; productStylePt: MF; humanReviewed: MF;
       productSummary: MF; wctBullet1: MF; pfBullet1: MF;
       seasonalMdPhrase: MF; seasonalFdPhrase: MF; seasonalVdPhrase: MF;
@@ -125,6 +127,7 @@ export async function GET(req: NextRequest) {
             contentStatus: contentSt,
             isChristmas,
             humanReviewed: isHumanReviewed,
+            price: parseFloat(edge.node.priceRangeV2?.minVariantPrice?.amount ?? "0") || 0,
           },
           cursor: edge.cursor,
         });

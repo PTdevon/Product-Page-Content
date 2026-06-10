@@ -25,6 +25,7 @@ const GET_PRODUCT_METAFIELDS = `
       handle
       descriptionHtml
       featuredImage { url altText }
+      priceRangeV2 { minVariantPrice { amount } }
       productSummary:  metafield(namespace: "product",          key: "product_summary")   { value }
       productTypePt:   metafield(namespace: "product",          key: "product_type")   { value }
       productStylePt:  metafield(namespace: "product",          key: "product_style")  { value }
@@ -59,6 +60,7 @@ interface GetProductResponse {
     handle: string;
     descriptionHtml: string;
     featuredImage: { url: string; altText: string } | null;
+    priceRangeV2?: { minVariantPrice: { amount: string } } | null;
     productSummary: MF; productTypePt: MF; productStylePt: MF; humanReviewed: MF;
     wctBullet1: MF; wctBullet2: MF; wctBullet3: MF; wctBullet4: MF;
     pfBullet1: MF; pfBullet2: MF; pfBullet3: MF; pfBullet4: MF;
@@ -107,6 +109,7 @@ export async function getProductWithMetafields(productGid: string) {
       handle: p.handle,
       descriptionHtml: p.descriptionHtml,
       featuredImage: p.featuredImage,
+      price: parseFloat(p.priceRangeV2?.minVariantPrice?.amount ?? "0") || 0,
     },
     metafields,
   };
@@ -249,7 +252,7 @@ function parseProductNode(p: GetProductResponse["product"]): ReturnType<typeof g
     },
   };
   return {
-    product: { id: p.id, title: p.title, handle: p.handle, descriptionHtml: p.descriptionHtml, featuredImage: p.featuredImage },
+    product: { id: p.id, title: p.title, handle: p.handle, descriptionHtml: p.descriptionHtml, featuredImage: p.featuredImage, price: parseFloat(p.priceRangeV2?.minVariantPrice?.amount ?? "0") || 0 },
     metafields,
   };
 }

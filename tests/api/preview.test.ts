@@ -19,7 +19,7 @@ beforeEach(() => {
   vi.mocked(requireAuth).mockResolvedValue(null);
   vi.mocked(getSettings).mockResolvedValue(defaultSettings);
   vi.mocked(getProductWithMetafields).mockResolvedValue({
-    product: { id: "gid://shopify/Product/1", title: "Vase", handle: "vase", descriptionHtml: "<p>Nice vase</p>", featuredImage: null },
+    product: { id: "gid://shopify/Product/1", title: "Vase", handle: "vase", descriptionHtml: "<p>Nice vase</p>", featuredImage: null, price: 0 },
     metafields: {
       productTypePt: "Home", productStylePt: "Minimal", productSummary: "",
       whyChooseThis: { bullet1: "", bullet2: "", bullet3: "", bullet4: "" },

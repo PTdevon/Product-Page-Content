@@ -26,7 +26,7 @@ function getMockCreate() {
 
 function mockProduct(gid: string) {
   vi.mocked(getProductWithMetafields).mockResolvedValueOnce({
-    product: { id: gid, title: "Test Product", handle: "test", descriptionHtml: "<p>desc</p>", featuredImage: null },
+    product: { id: gid, title: "Test Product", handle: "test", descriptionHtml: "<p>desc</p>", featuredImage: null, price: 0 },
     metafields: {
       productTypePt: "Home", productStylePt: "Minimal", productSummary: "",
       whyChooseThis: { bullet1: "", bullet2: "", bullet3: "", bullet4: "" },

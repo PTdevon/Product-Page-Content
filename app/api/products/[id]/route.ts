@@ -35,6 +35,7 @@ export async function GET(
       productStyles: metafields.productStylePt
         ? metafields.productStylePt.split(",").map((s) => s.trim()).filter(Boolean)
         : [],
+      price: product.price,
     };
     const settings = await getSettings();
     const wct = assignWhyChooseThis(ctx, wctLibrary);

@@ -10,7 +10,7 @@ import { requireAuth } from "@/lib/auth";
 
 function mockProduct(gid: string) {
   return {
-    product: { id: gid, title: `Product ${gid}`, handle: "p", descriptionHtml: "", featuredImage: { url: "https://cdn.shopify.com/img.jpg" } },
+    product: { id: gid, title: `Product ${gid}`, handle: "p", descriptionHtml: "", featuredImage: { url: "https://cdn.shopify.com/img.jpg", altText: "" }, price: 0 },
     metafields: {
       productTypePt: "Home", productStylePt: "Minimal", productSummary: "A nice product",
       whyChooseThis: { bullet1: "b1", bullet2: "b2", bullet3: "b3", bullet4: "b4" },

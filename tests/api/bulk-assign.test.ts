@@ -24,7 +24,7 @@ const defaultSettings = {
 
 function mockProduct(gid: string, type = "Home", style = "Minimal", complete = false) {
   vi.mocked(getProductWithMetafields).mockResolvedValueOnce({
-    product: { id: gid, title: `Product ${gid}`, handle: "p", descriptionHtml: "<p>desc</p>", featuredImage: null },
+    product: { id: gid, title: `Product ${gid}`, handle: "p", descriptionHtml: "<p>desc</p>", featuredImage: null, price: 0 },
     metafields: {
       productTypePt: type,
       productStylePt: style,

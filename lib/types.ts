@@ -51,6 +51,7 @@ export interface ProductSummary {
   contentStatus: "complete" | "partial" | "missing";
   isChristmas: boolean;
   humanReviewed?: boolean;
+  price?: number;
 }
 
 export interface AppSettings {
