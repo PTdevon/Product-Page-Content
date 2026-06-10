@@ -1279,12 +1279,13 @@ function PfTable({ phrases, loading, onEdit }: { phrases: PFPhraseRow[]; loading
           <SortHeader col="phrase" label="Phrase" />
           <SortHeader col="category" label="Category" />
           <SortHeader col="timeSensitive" label="Seasonal" />
+          <th className="px-4 py-3 text-left font-medium text-gray-600 text-xs uppercase tracking-wide">Price</th>
           <th className="px-4 py-3 text-left font-medium text-gray-600 text-xs uppercase tracking-wide">Product Types</th>
         </tr>
       </thead>
       <tbody className="divide-y divide-gray-100">
-        {loading && <tr><td colSpan={5} className="px-4 py-10 text-center text-gray-400">Loading…</td></tr>}
-        {!loading && sorted.length === 0 && <tr><td colSpan={5} className="px-4 py-10 text-center text-gray-400">No phrases found</td></tr>}
+        {loading && <tr><td colSpan={6} className="px-4 py-10 text-center text-gray-400">Loading…</td></tr>}
+        {!loading && sorted.length === 0 && <tr><td colSpan={6} className="px-4 py-10 text-center text-gray-400">No phrases found</td></tr>}
         {sorted.map((p) => (
           <tr key={p.id} onClick={() => onEdit(p)} className="cursor-pointer hover:bg-gray-50">
             <td className="px-4 py-3"><IconImg icon={p.icon} size={20} /></td>
@@ -1294,6 +1295,11 @@ function PfTable({ phrases, loading, onEdit }: { phrases: PFPhraseRow[]; loading
               {p.timeSensitive === "mothers-day" && <Tooltip content="This phrase only shows on products during its Mother's Day date window, set in Seasonal Settings."><span className="px-2 py-0.5 rounded-full text-xs bg-pink-50 text-pink-700 cursor-default">Mother&apos;s Day</span></Tooltip>}
               {p.timeSensitive === "fathers-day" && <Tooltip content="This phrase only shows on products during its Father's Day date window, set in Seasonal Settings."><span className="px-2 py-0.5 rounded-full text-xs bg-blue-50 text-blue-700 cursor-default">Father&apos;s Day</span></Tooltip>}
               {p.timeSensitive === "valentines-day" && <Tooltip content="This phrase only shows on products during its Valentine's Day date window, set in Seasonal Settings."><span className="px-2 py-0.5 rounded-full text-xs bg-red-50 text-red-700 cursor-default">Valentine&apos;s Day</span></Tooltip>}
+            </td>
+            <td className="px-4 py-3 text-xs text-gray-500">
+              {p.minPrice !== undefined && p.maxPrice !== undefined && `£${p.minPrice} – £${p.maxPrice}`}
+              {p.minPrice !== undefined && p.maxPrice === undefined && `£${p.minPrice}+`}
+              {p.minPrice === undefined && p.maxPrice !== undefined && `up to £${p.maxPrice}`}
             </td>
             <td className="px-4 py-3 text-gray-500 text-xs">
               {p.applicabilities.length} type{p.applicabilities.length !== 1 ? "s" : ""}
