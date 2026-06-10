@@ -11,6 +11,8 @@ import type { WhyChooseThisEntry } from "@/lib/types";
 
 const wctBase = wctData as WhyChooseThisEntry[];
 
+export const maxDuration = 60;
+
 export async function POST(req: NextRequest) {
   const authError = await requireAuth(req);
   if (authError) return authError;
@@ -21,12 +23,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "No products" }, { status: 400 });
   }
 
-  const [pfLibrary, products, settings, libraryEdits] = await Promise.all([
-    getPfLibrary(),
-    getProductsBatchWithMetafields(productIds),
-    readOnly ? Promise.resolve(null) : getSettings(),
-    readOnly ? Promise.resolve(null) : getLibraryEdits(),
-  ]);
+  let pfLibrary: Awaited<ReturnType<typeof getPfLibrary>>;
+  let products: Awaited<ReturnType<typeof getProductsBatchWithMetafields>>;
+  let settings: Awaited<ReturnType<typeof getSettings>> | null;
+  let libraryEdits: Awaited<ReturnType<typeof getLibraryEdits>> | null;
+
+  try {
+    [pfLibrary, products, settings, libraryEdits] = await Promise.all([
+      getPfLibrary(),
+      getProductsBatchWithMetafields(productIds),
+      readOnly ? Promise.resolve(null) : getSettings(),
+      readOnly ? Promise.resolve(null) : getLibraryEdits(),
+    ]);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: `Failed to load data: ${message}` }, { status: 500 });
+  }
 
   // Map phrase text → current icon so stale stored icons are corrected on display
   const pfIconByPhrase = new Map(pfLibrary.map((e) => [e.phrase, e.icon]));

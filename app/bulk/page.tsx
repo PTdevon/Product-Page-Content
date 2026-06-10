@@ -627,7 +627,9 @@ export default function BulkPage() {
     });
 
     if (!res.ok) {
-      setContentError("Failed to load content — please try again.");
+      let detail = "";
+      try { const e = await res.json(); detail = e?.error ? ` (${e.error})` : ""; } catch { /* ignore */ }
+      setContentError(`Failed to load content — please try again.${detail}`);
       setContentPhase("idle");
       return;
     }

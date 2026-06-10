@@ -8,6 +8,8 @@ import { getSettings } from "@/lib/settings-store";
 import { getPfLibrary } from "@/lib/pf-store";
 import { getWctLibrary } from "@/lib/wct-store";
 
+export const maxDuration = 60;
+
 export async function POST(req: NextRequest) {
   const authError = await requireAuth(req);
   if (authError) return authError;
