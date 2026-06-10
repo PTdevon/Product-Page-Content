@@ -133,7 +133,6 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
   const [modalImage, setModalImage] = useState<string | null>(null);
   const [taxonomy, setTaxonomy] = useState<Record<string, string[]>>(PRODUCT_TAXONOMY);
   const [humanReviewed, setHumanReviewed] = useState(false);
-  const [productPrice, setProductPrice] = useState<number | undefined>(undefined);
 
   useEffect(() => {
     fetch("/api/taxonomy").then((r) => r.ok ? r.json() : null).then((d) => { if (d?.taxonomy) setTaxonomy(d.taxonomy); }).catch(() => {});
@@ -157,7 +156,6 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
         setProductStyles(d.metafields.productStylePt ? d.metafields.productStylePt.split(",").map(s => s.trim()).filter(Boolean) : []);
         setProductSummary(d.metafields.productSummary);
         setHumanReviewed(d.metafields.humanReviewed === "true");
-        setProductPrice(typeof d.product?.price === "number" ? d.product.price : undefined);
 
         // Use saved metafields, fall back to preview
         const wct = d.metafields.whyChooseThis.bullet1
@@ -703,7 +701,6 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
           productType={productType}
           productStyles={productStyles}
           selectedPhrases={swapModal.type === "perfect" ? pfSlots.map((s) => s.phrase).filter(Boolean) : []}
-          productPrice={productPrice}
           onSelect={handleSwapSelect}
           onClose={() => setSwapModal(null)}
         />
