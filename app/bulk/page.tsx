@@ -826,7 +826,7 @@ export default function BulkPage() {
       <div className="flex flex-1 overflow-hidden">
 
         {/* Product table */}
-        <div className={`flex flex-col ${showRightPanel ? "w-2/5 border-r border-gray-200" : "w-full"} overflow-hidden`}>
+        <div className={`flex flex-col ${showRightPanel ? "hidden" : "w-full"} overflow-hidden`}>
           <div className="flex-1 overflow-y-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
