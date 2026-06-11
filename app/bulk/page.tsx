@@ -48,6 +48,7 @@ interface ContentRow {
   regenerating: boolean;
   wctPfRecalculating?: boolean;
   humanReviewed: boolean;
+  isChristmas: boolean;
   summaryError?: { message: string; billingUrl?: string };
   regenerateError?: { message: string; billingUrl?: string };
 }
@@ -64,11 +65,13 @@ function parseBullet(val: string): { text: string; subtext: string } {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function ClassifyBadge({ status }: { status: ProductSummary["classifyStatus"] }) {
+function ClassifyBadge({ status, isChristmas }: { status: ProductSummary["classifyStatus"]; isChristmas?: boolean }) {
   if (status === "complete")
     return <Tooltip content="This product already has a Product Type and Style assigned."><span className="px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700 cursor-default">Type and Style set</span></Tooltip>;
   if (status === "partial")
     return <Tooltip content="This product has a Type but no Style (or vice versa). Both are needed before content can be generated."><span className="px-2 py-0.5 rounded-full text-xs bg-yellow-100 text-yellow-700 cursor-default">Part. classified</span></Tooltip>;
+  if (isChristmas)
+    return <Tooltip content="Christmas products don't require a Type and Style."><span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-500 cursor-default">Type and Style not applicable</span></Tooltip>;
   return <Tooltip content="This product hasn't been classified yet. Use Set Type & Style to assign one."><span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-500 cursor-default">No Type and Style set</span></Tooltip>;
 }
 
@@ -91,6 +94,7 @@ export default function BulkPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [bestseller, setBestseller] = useState(false);
+  const [christmas, setChristmas] = useState(false);
   const [typeFilter, setTypeFilter] = useState("");
   const [styleFilter, setStyleFilter] = useState("");
   const [reviewedFilter, setReviewedFilter] = useState("");
@@ -218,6 +222,7 @@ export default function BulkPage() {
     if (search) params.set("search", search);
     if (statusFilter) params.set("status", statusFilter);
     if (bestseller) params.set("bestseller", "true");
+    if (christmas) params.set("christmas", "true");
     if (reviewedFilter) params.set("reviewed", reviewedFilter);
     if (typeFilter) params.set("type", typeFilter);
     if (styleFilter) params.set("style", styleFilter);
@@ -228,7 +233,7 @@ export default function BulkPage() {
       if (countEpochRef.current !== epoch) return;
       setTotalCount(data.count);
     } catch { /* abort or network error — leave count as null (shows fallback) */ }
-  }, [search, statusFilter, bestseller, reviewedFilter, typeFilter, styleFilter]);
+  }, [search, statusFilter, bestseller, christmas, reviewedFilter, typeFilter, styleFilter]);
 
   const fetchPage = useCallback(async (pageNum: number, signal?: AbortSignal) => {
     setLoading(true);
@@ -239,6 +244,7 @@ export default function BulkPage() {
     if (search) params.set("search", search);
     if (statusFilter) params.set("status", statusFilter);
     if (bestseller) params.set("bestseller", "true");
+    if (christmas) params.set("christmas", "true");
     if (reviewedFilter) params.set("reviewed", reviewedFilter);
     if (typeFilter) params.set("type", typeFilter);
     if (styleFilter) params.set("style", styleFilter);
@@ -266,7 +272,7 @@ export default function BulkPage() {
       setFetchError("Network error — please check your connection and try again.");
       setLoading(false);
     }
-  }, [search, statusFilter, bestseller, reviewedFilter, typeFilter, styleFilter, pageSize]);
+  }, [search, statusFilter, bestseller, christmas, reviewedFilter, typeFilter, styleFilter, pageSize]);
 
   const navigate = useCallback((pageNum: number) => {
     controllerRef.current?.abort();
@@ -292,7 +298,7 @@ export default function BulkPage() {
     fetchTotalCount(controller.signal);
     return () => { controller.abort(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, statusFilter, bestseller, reviewedFilter, typeFilter, styleFilter, pageSize]);
+  }, [search, statusFilter, bestseller, christmas, reviewedFilter, typeFilter, styleFilter, pageSize]);
 
   // ── Selection helpers ────────────────────────────────────────────────────
 
@@ -624,7 +630,7 @@ export default function BulkPage() {
     const res = await fetch("/api/bulk-content-review", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ productIds: ids }),
+      body: JSON.stringify({ productIds: ids, summaryOnly: christmas }),
     });
 
     if (!res.ok) {
@@ -651,19 +657,20 @@ export default function BulkPage() {
       return;
     }
     const reviewedMap = new Map(selectedWithTypeStyle.map((p) => [p.id, p.humanReviewed ?? false]));
-    const rows: ContentRow[] = (data.rows ?? []).map((r) => ({ ...r, dirty: false, humanReviewed: reviewedMap.get(r.productId) ?? false }));
+    const rows: ContentRow[] = (data.rows ?? []).map((r) => ({ ...r, dirty: false, isChristmas: christmas, humanReviewed: reviewedMap.get(r.productId) ?? false }));
     setContentRows(rows);
     setContentPhase("review");
   }
 
   async function handleRegenerateContent(productId: string) {
+    const row = contentRows.find((r) => r.productId === productId);
     setContentRows((rows) => rows.map((r) => r.productId === productId ? { ...r, regenerating: true, regenerateError: undefined } : r));
 
     try {
       const res = await fetch("/api/generate-content", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productId }),
+        body: JSON.stringify({ productId, summaryOnly: row?.isChristmas ?? false }),
       });
 
       if (res.ok) {
@@ -747,6 +754,7 @@ export default function BulkPage() {
             productTypePt: r.productTypePt,
             productStylePt: r.productStylePt,
             humanReviewed: r.humanReviewed,
+            isChristmas: r.isChristmas,
           })),
         }),
       });
@@ -777,10 +785,10 @@ export default function BulkPage() {
   // ── Layout state ─────────────────────────────────────────────────────────
 
   const selectedCount = selectedIds.size;
-  // Only products with both type AND style can have content populated
-  const selectedWithTypeStyle = products.filter(
-    (p) => selectedIds.has(p.id) && p.productTypePt && p.productStylePt
-  );
+  // In Christmas mode all selected products are eligible; otherwise only those with type+style
+  const selectedWithTypeStyle = christmas
+    ? products.filter((p) => selectedIds.has(p.id))
+    : products.filter((p) => selectedIds.has(p.id) && p.productTypePt && p.productStylePt);
   const populateCount = selectedWithTypeStyle.length;
   const showClassify = classifyPhase !== "idle";
   const showContent  = contentPhase !== "idle";
@@ -810,12 +818,22 @@ export default function BulkPage() {
           />
           Bestseller Tag
         </label>
+        <label className="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={christmas}
+            onChange={(e) => { setChristmas(e.target.checked); if (e.target.checked) { setTypeFilter(""); setStyleFilter(""); } }}
+            className="rounded border-gray-300"
+          />
+          Christmas
+        </label>
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
           className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         >
           <option value="">Content Status</option>
+          <option value="unstarted">Not Started</option>
           <option value="missing">No Content</option>
           <option value="partial">Partial Content</option>
           <option value="complete">Complete</option>
@@ -829,23 +847,27 @@ export default function BulkPage() {
           <option value="true">Approved</option>
           <option value="false">Not Approved</option>
         </select>
-        <select
-          value={typeFilter}
-          onChange={(e) => { setTypeFilter(e.target.value); setStyleFilter(""); }}
-          className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        >
-          <option value="">All types</option>
-          {Object.keys(taxonomy).map((t) => <option key={t} value={t}>{t}</option>)}
-        </select>
-        <select
-          value={styleFilter}
-          onChange={(e) => { setStyleFilter(e.target.value); }}
-          disabled={!typeFilter || (taxonomy[typeFilter] ?? []).length === 0}
-          className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-40"
-        >
-          <option value="">All styles</option>
-          {(taxonomy[typeFilter] ?? []).map((s) => <option key={s} value={s}>{s}</option>)}
-        </select>
+        {!christmas && (
+          <>
+            <select
+              value={typeFilter}
+              onChange={(e) => { setTypeFilter(e.target.value); setStyleFilter(""); }}
+              className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="">All types</option>
+              {Object.keys(taxonomy).map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+            <select
+              value={styleFilter}
+              onChange={(e) => { setStyleFilter(e.target.value); }}
+              disabled={!typeFilter || (taxonomy[typeFilter] ?? []).length === 0}
+              className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-40"
+            >
+              <option value="">All styles</option>
+              {(taxonomy[typeFilter] ?? []).map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </>
+        )}
         <span className="text-sm text-gray-400">
           {loading && products.length === 0
             ? "Loading..."
@@ -924,7 +946,7 @@ export default function BulkPage() {
                     <td className="px-4 py-2.5 text-gray-500 text-xs">
                       {p.productStylePt || <span className="text-red-400">—</span>}
                     </td>
-                    {!showRightPanel && <td className="px-4 py-2.5"><ClassifyBadge status={p.classifyStatus} /></td>}
+                    {!showRightPanel && <td className="px-4 py-2.5"><ClassifyBadge status={p.classifyStatus} isChristmas={christmas && p.classifyStatus === "missing"} /></td>}
                     {!showRightPanel && <td className="px-4 py-2.5"><ContentBadge status={p.contentStatus} /></td>}
                   </tr>
                 ))}
@@ -967,10 +989,10 @@ export default function BulkPage() {
             <span className="text-sm text-gray-500">
               {selectedCount === 0 ? "None selected" : `${selectedCount} selected`}
             </span>
-            <Tooltip content="For selected products, use AI to suggest the right Product Type and Style. You'll review and approve before anything saves." side="top">
+            <Tooltip content={christmas ? "Type and Style cannot be set on Christmas products." : "For selected products, use AI to suggest the right Product Type and Style. You'll review and approve before anything saves."} side="top">
               <button
                 onClick={handleClassify}
-                disabled={selectedCount === 0 || classifyPhase !== "idle" || contentPhase !== "idle"}
+                disabled={selectedCount === 0 || classifyPhase !== "idle" || contentPhase !== "idle" || christmas}
                 className="px-4 py-2 bg-gray-900 text-white text-sm rounded disabled:opacity-40 hover:bg-gray-700 transition-colors"
               >
                 Set Type &amp; Style{selectedCount > 0 ? ` (${selectedCount})` : ""}
@@ -1343,7 +1365,7 @@ export default function BulkPage() {
                             })()}
                           </div>
 
-                          <div className={row.wctPfRecalculating ? "opacity-40 pointer-events-none" : ""}>
+                          {!row.isChristmas && <div className={row.wctPfRecalculating ? "opacity-40 pointer-events-none" : ""}>
                             <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-2">Why Choose This</label>
                             <div className="space-y-1.5">
                               {row.wctBullets.map((bullet, i) => {
@@ -1402,9 +1424,9 @@ export default function BulkPage() {
                                 );
                               })}
                             </div>
-                          </div>
+                          </div>}
 
-                          <div className={row.wctPfRecalculating ? "opacity-40 pointer-events-none" : ""}>
+                          {!row.isChristmas && <div className={row.wctPfRecalculating ? "opacity-40 pointer-events-none" : ""}>
                             <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-2">Perfect For</label>
                             <div className="space-y-1.5">
                               {row.pfBullets.map((phrase, i) => {
@@ -1448,7 +1470,7 @@ export default function BulkPage() {
                                 );
                               })}
                             </div>
-                          </div>
+                          </div>}
                         </div>
 
                         {/* Approved bar */}
