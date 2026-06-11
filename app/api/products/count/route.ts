@@ -75,7 +75,7 @@ export async function GET(req: NextRequest) {
         const isHumanReviewed = (edge.node.humanReviewed?.value ?? "") === "true";
         if (reviewedFilter === "true"  && !isHumanReviewed) continue;
         if (reviewedFilter === "false" && isHumanReviewed) continue;
-        if (!statusFilter || matchesFilter(statusFilter, cs, contentSt)) {
+        if (!statusFilter || matchesFilter(statusFilter, cs, contentSt, !!(typeFilter || styleFilter))) {
           count++;
         }
       }
