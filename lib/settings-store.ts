@@ -144,7 +144,7 @@ async function persist(settings: AppSettings): Promise<void> {
   // validation, duplicate handle) should surface immediately.
   if (res.metaobjectCreate.userErrors.length > 0) {
     const isTypeMissing = res.metaobjectCreate.userErrors.some(
-      (e) => /type|definition/i.test(e.message) || e.field === "type"
+      (e) => /type|definition/i.test(e.message)
     );
     if (!isTypeMissing) {
       throw new Error(`Shopify save failed: ${res.metaobjectCreate.userErrors.map((e) => e.message).join(", ")}`);
