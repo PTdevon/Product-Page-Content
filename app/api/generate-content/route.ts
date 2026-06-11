@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
   const authError = await requireAuth(req);
   if (authError) return authError;
 
-  const { productId } = await req.json() as { productId: string };
+  const { productId, summaryOnly } = await req.json() as { productId: string; summaryOnly?: boolean };
 
   const { product, metafields } = await getProductWithMetafields(productId);
 
@@ -37,8 +37,8 @@ export async function POST(req: NextRequest) {
   const [settings, pfLibrary, wctLibrary] = await Promise.all([getSettings(), getPfLibrary(), getWctLibrary()]);
   const today = new Date();
 
-  const wct = assignWhyChooseThis(ctx, wctLibrary);
-  const pf = assignPerfectFor(ctx, pfLibrary, settings.dateRanges, today, undefined, undefined, settings.interestKeywords);
+  const wct = summaryOnly ? null : assignWhyChooseThis(ctx, wctLibrary);
+  const pf  = summaryOnly ? null : assignPerfectFor(ctx, pfLibrary, settings.dateRanges, today, undefined, undefined, settings.interestKeywords);
 
   const summaryResult = await generateProductSummary({
     title: product.title,
@@ -55,18 +55,14 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     summary,
-    wctBullets: [wct.bullet1, wct.bullet2, wct.bullet3, wct.bullet4] as [string, string, string, string],
-    pfBullets: [
-      pf.bullets[0] ?? "",
-      pf.bullets[1] ?? "",
-      pf.bullets[2] ?? "",
-      pf.bullets[3] ?? "",
-    ] as [string, string, string, string],
-    pfIcons: [
-      pf.icons[0] ?? "",
-      pf.icons[1] ?? "",
-      pf.icons[2] ?? "",
-      pf.icons[3] ?? "",
-    ] as [string, string, string, string],
+    wctBullets: wct
+      ? [wct.bullet1, wct.bullet2, wct.bullet3, wct.bullet4] as [string, string, string, string]
+      : ["", "", "", ""] as [string, string, string, string],
+    pfBullets: pf
+      ? [pf.bullets[0] ?? "", pf.bullets[1] ?? "", pf.bullets[2] ?? "", pf.bullets[3] ?? ""] as [string, string, string, string]
+      : ["", "", "", ""] as [string, string, string, string],
+    pfIcons: pf
+      ? [pf.icons[0] ?? "", pf.icons[1] ?? "", pf.icons[2] ?? "", pf.icons[3] ?? ""] as [string, string, string, string]
+      : ["", "", "", ""] as [string, string, string, string],
   });
 }

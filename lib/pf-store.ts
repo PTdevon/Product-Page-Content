@@ -10,6 +10,7 @@ import {
   type PFApplicabilityEdit,
 } from "./library-edits-store";
 import type { PFPhrase, PFApplicability, PerfectForEntry } from "./types";
+import { getSettings, saveSettings } from "./settings-store";
 
 const basePhrases = pfPhrasesBase as PFPhrase[];
 const baseApplicability = pfApplicabilityBase as PFApplicability[];
@@ -294,11 +295,12 @@ export async function deletePhrase(phraseId: string): Promise<void> {
   const edits = await getLibraryEdits();
   const existingEdit = edits.pfPhrases[phraseId];
   const base = basePhrases.find((p) => p.id === phraseId);
+  const phraseText = existingEdit?.phrase ?? base?.phrase ?? "";
 
   // Mark the phrase as deleted
   await upsertPFPhraseEdit({
     id: phraseId,
-    phrase: existingEdit?.phrase ?? base?.phrase ?? "",
+    phrase: phraseText,
     icon: existingEdit?.icon ?? base?.icon ?? "",
     searchPhrase: existingEdit?.searchPhrase ?? base?.phrase ?? "",
     isNew: existingEdit?.isNew ?? false,
@@ -310,6 +312,16 @@ export async function deletePhrase(phraseId: string): Promise<void> {
   const ownApplicabilities = allApplicabilities.filter((a) => a.phraseId === phraseId);
   for (const app of ownApplicabilities) {
     await removeApplicability(app.id);
+  }
+
+  // Remove the interest keyword entry for this phrase, if one exists
+  if (phraseText) {
+    const settings = await getSettings();
+    if (phraseText in settings.interestKeywords) {
+      const updatedKeywords = { ...settings.interestKeywords };
+      delete updatedKeywords[phraseText];
+      await saveSettings({ ...settings, interestKeywords: updatedKeywords });
+    }
   }
 }
 

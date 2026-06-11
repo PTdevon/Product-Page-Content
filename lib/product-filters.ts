@@ -19,15 +19,17 @@ export function contentStatus(node: { productSummary: MF; wctBullet1: MF; pfBull
   return "missing";
 }
 
-export function matchesFilter(filter: string, cs: StatusValue, contentSt: StatusValue, typeFilterActive = false): boolean {
+export function matchesFilter(filter: string, cs: StatusValue, contentSt: StatusValue): boolean {
   if (!filter) return true;
   if (filter === "needs-classify")    return cs !== "complete";
   if (filter === "ready-to-populate") return cs === "complete" && contentSt !== "complete";
   if (filter === "complete")          return contentSt === "complete";
-  if (filter === "missing")  return typeFilterActive ? contentSt === "missing" : (cs === "missing" && contentSt === "missing");
-  if (filter === "partial")  return (cs !== "missing" || contentSt !== "missing") && contentSt !== "complete";
-  if (filter === "has-content")      return contentSt !== "missing";
-  if (filter === "content-partial")  return contentSt === "partial";
-  if (filter === "content-complete") return contentSt === "complete";
+  if (filter === "unstarted")         return cs === "missing" && contentSt === "missing";
+  if (filter === "needs-content")     return cs !== "missing" && contentSt === "missing";
+  if (filter === "content-partial")   return contentSt === "partial";
+  if (filter === "content-complete")  return contentSt === "complete";
+  if (filter === "missing")           return cs === "missing" && contentSt === "missing";
+  if (filter === "partial")           return (cs !== "missing" || contentSt !== "missing") && contentSt !== "complete";
+  if (filter === "has-content")       return contentSt !== "missing";
   return true;
 }

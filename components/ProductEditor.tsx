@@ -506,6 +506,7 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
           {/* Why People Love This — hidden for Christmas products */}
           {!isChristmas && <section>
             <SectionHeading>Why People Love This</SectionHeading>
+            {typeStyleError && <p className="text-red-500 text-xs mb-2">{typeStyleError}</p>}
             {(!productType || productStyles.length === 0) && !wctBullets.bullet1 ? (
               <p className="text-sm text-gray-400 italic">Please select a Product Type and Style above to populate</p>
             ) : (
@@ -594,6 +595,7 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
                 </button>
               </Tooltip>
             )}
+            {typeStyleError && <p className="text-red-500 text-xs mt-2">{typeStyleError}</p>}
           </section>}
 
           {/* Perfect For — hidden for Christmas products */}

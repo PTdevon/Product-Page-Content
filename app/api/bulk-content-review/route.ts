@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
   const authError = await requireAuth(req);
   if (authError) return authError;
 
-  const { productIds, readOnly } = await req.json() as { productIds: string[]; readOnly?: boolean };
+  const { productIds, readOnly, summaryOnly } = await req.json() as { productIds: string[]; readOnly?: boolean; summaryOnly?: boolean };
 
   if (!Array.isArray(productIds) || productIds.length === 0) {
     return NextResponse.json({ error: "No products" }, { status: 400 });
@@ -113,7 +113,7 @@ export async function POST(req: NextRequest) {
     const hasWct = !!metafields.whyChooseThis.bullet1;
     const hasPf = !!metafields.perfectFor.bullet1;
 
-    if (hasSummary && hasWct && hasPf) {
+    if (hasSummary && (summaryOnly || (hasWct && hasPf))) {
       settled.push(storedRow(product, metafields, "existing"));
       continue;
     }
@@ -128,7 +128,7 @@ export async function POST(req: NextRequest) {
       ? metafields.productStylePt.split(",").map((s) => s.trim()).filter(Boolean)
       : [];
 
-    if (!type || styles.length === 0) {
+    if (!summaryOnly && (!type || styles.length === 0)) {
       settled.push(storedRow(product, metafields, "needs-classify"));
       continue;
     }
@@ -136,24 +136,24 @@ export async function POST(req: NextRequest) {
     const ctx = {
       title: product.title,
       descriptionText: product.descriptionHtml.replace(/<[^>]+>/g, " ").trim(),
-      productType: type,
+      productType: type ?? "",
       productStyles: styles,
     };
 
-    const wct = hasWct ? null : assignWhyChooseThis(ctx, wctLibrary);
-    const pf  = hasPf  ? null : assignPerfectFor(ctx, pfLibrary, settings!.dateRanges, today, undefined, undefined, settings!.interestKeywords);
+    const wct = summaryOnly ? null : (hasWct ? null : assignWhyChooseThis(ctx, wctLibrary));
+    const pf  = summaryOnly ? null : (hasPf  ? null : assignPerfectFor(ctx, pfLibrary, settings!.dateRanges, today, undefined, undefined, settings!.interestKeywords));
 
     pending.push({
       productId: product.id,
       title: product.title,
       imageUrl: product.featuredImage?.url ?? null,
-      productTypePt: type,
+      productTypePt: type ?? "",
       productStylePt: metafields.productStylePt,
       existingSummary: metafields.productSummary,
       summaryInput: hasSummary ? null : {
         title: product.title,
         descriptionHtml: product.descriptionHtml,
-        productType: type,
+        productType: type ?? "",
         productStyle: styles.join(", "),
       },
       wctBullets: wct

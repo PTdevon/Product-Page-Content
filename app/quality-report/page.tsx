@@ -103,7 +103,7 @@ export default function QualityReportPage() {
         if (data.filters) {
           setSearch(data.filters.search ?? "");
           const saved = data.filters.statusFilter;
-          setStatusFilter(saved === "partial" || saved === "complete" ? saved : "complete");
+          setStatusFilter(saved === "content-partial" || saved === "complete" ? saved : "complete");
           setReviewedFilter(data.filters.reviewedFilter ?? "");
           setTypeFilter(data.filters.typeFilter ?? "");
           setStyleFilter(data.filters.styleFilter ?? "");
@@ -409,7 +409,7 @@ export default function QualityReportPage() {
               disabled={isRunning}
               className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-40"
             >
-              <option value="partial">Partial Content</option>
+              <option value="content-partial">Content Started</option>
               <option value="complete">Complete</option>
             </select>
             <select

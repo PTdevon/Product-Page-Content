@@ -214,6 +214,7 @@ function WCTEditModal({ entry, onClose, onSaved, taxonomy }: WCTEditModalProps) 
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
         </div>
         <div className="px-6 py-4 space-y-4 max-h-[70vh] overflow-y-auto">
+          {saveError && <p className="text-red-600 text-xs">{saveError}</p>}
           {isNew ? (
             <>
               <div>
@@ -979,6 +980,10 @@ function LibraryPageInner() {
 
   useEffect(() => {
     setTab(searchParams.get("tab") === "perfect" ? "perfect" : "why");
+    setProductType(searchParams.get("type") ?? "");
+    setProductStyle(searchParams.get("style") ?? "");
+    setCategory("");
+    setSearch("");
   }, [searchParams]);
 
   const [taxonomy, setTaxonomy] = useState<Record<string, string[]>>(PRODUCT_TAXONOMY);
@@ -995,6 +1000,7 @@ function LibraryPageInner() {
   const [editWctTarget, setEditWctTarget] = useState<WCTRow | null | undefined>(undefined);
   const [editPfTarget, setEditPfTarget] = useState<PFPhraseRow | null | undefined>(undefined);
   const [addingNew, setAddingNew] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // Keep open WCT modal in sync so searchFormatted stays current after pushes
   const editWctTargetId = editWctTarget?.id;
@@ -1024,7 +1030,7 @@ function LibraryPageInner() {
       if (productStyle) params.set("productStyle", productStyle);
       if (category) params.set("category", category);
       if (search) params.set("search", search);
-      const res = await fetch(`/api/library?${params}`);
+      const res = await fetch(`/api/library?${params}`, { cache: "no-store" });
       if (!res.ok) { setLoading(false); return; }
       const data = await res.json();
       setWctEntries(data.entries ?? []);
@@ -1035,14 +1041,14 @@ function LibraryPageInner() {
       if (productStyle) params.set("productStyle", productStyle);
       if (category) params.set("category", category);
       if (search) params.set("search", search);
-      const res = await fetch(`/api/library?${params}`);
+      const res = await fetch(`/api/library?${params}`, { cache: "no-store" });
       if (!res.ok) { setLoading(false); return; }
       const data = await res.json();
       setPfPhrases(data.phrases ?? []);
       setTotal(data.total ?? 0);
     }
     setLoading(false);
-  }, [tab, productType, productStyle, category, search]);
+  }, [tab, productType, productStyle, category, search, refreshKey]);
 
   useEffect(() => {
     setCategory(""); setProductStyle(""); setWctEntries([]); setPfPhrases([]);
@@ -1109,7 +1115,7 @@ function LibraryPageInner() {
         <WCTEditModal
           entry={addingNew ? null : editWctTarget!}
           onClose={closeModal}
-          onSaved={() => fetchEntries()}
+          onSaved={() => setRefreshKey(k => k + 1)}
           taxonomy={taxonomy}
         />
       )}
@@ -1119,7 +1125,7 @@ function LibraryPageInner() {
         <PFEditModal
           entry={addingNew ? null : editPfTarget!}
           onClose={closeModal}
-          onSaved={() => fetchEntries()}
+          onSaved={() => setRefreshKey(k => k + 1)}
           taxonomy={taxonomy}
         />
       )}

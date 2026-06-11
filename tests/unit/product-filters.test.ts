@@ -89,10 +89,28 @@ describe("matchesFilter", () => {
     expect(matchesFilter("ready-to-populate", "partial", "missing")).toBe(false);
   });
 
-  it("complete: true only when both are complete", () => {
+  it("complete: true when content is complete, regardless of classify status", () => {
     expect(matchesFilter("complete", "complete", "complete")).toBe(true);
+    expect(matchesFilter("complete", "partial", "complete")).toBe(true);
+    expect(matchesFilter("complete", "missing", "complete")).toBe(true);
     expect(matchesFilter("complete", "complete", "partial")).toBe(false);
-    expect(matchesFilter("complete", "partial", "complete")).toBe(false);
+    expect(matchesFilter("complete", "complete", "missing")).toBe(false);
+  });
+
+  it("unstarted: true only when both classify and content are missing", () => {
+    expect(matchesFilter("unstarted", "missing", "missing")).toBe(true);
+    expect(matchesFilter("unstarted", "partial", "missing")).toBe(false);
+    expect(matchesFilter("unstarted", "complete", "missing")).toBe(false);
+    expect(matchesFilter("unstarted", "missing", "partial")).toBe(false);
+    expect(matchesFilter("unstarted", "missing", "complete")).toBe(false);
+  });
+
+  it("needs-content: true when classify is not missing but content is missing", () => {
+    expect(matchesFilter("needs-content", "partial", "missing")).toBe(true);
+    expect(matchesFilter("needs-content", "complete", "missing")).toBe(true);
+    expect(matchesFilter("needs-content", "missing", "missing")).toBe(false);
+    expect(matchesFilter("needs-content", "partial", "partial")).toBe(false);
+    expect(matchesFilter("needs-content", "complete", "complete")).toBe(false);
   });
 
   it("missing: true only when both are missing", () => {

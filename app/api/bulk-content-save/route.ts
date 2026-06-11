@@ -13,6 +13,7 @@ interface ContentRowSave {
   productTypePt?: string;
   productStylePt?: string;
   humanReviewed?: boolean;
+  isChristmas?: boolean;
 }
 
 export async function POST(req: NextRequest) {
@@ -24,7 +25,7 @@ export async function POST(req: NextRequest) {
   const pfLibrary = await getPfLibrary();
 
   const batchRows = rows.map((row) => {
-    const seasonal = row.productTypePt !== undefined
+    const seasonal = !row.isChristmas && row.productTypePt !== undefined
       ? assignSeasonalPhrases(
           { title: "", descriptionText: "", productType: row.productTypePt, productStyles: row.productStylePt ? row.productStylePt.split(",").map((s) => s.trim()).filter(Boolean) : [] },
           pfLibrary
@@ -45,22 +46,24 @@ export async function POST(req: NextRequest) {
         }),
         humanReviewed: row.humanReviewed === true ? "true" : "false",
         productSummary: row.summary,
-        whyChooseThis: {
-          bullet1: row.wctBullets[0],
-          bullet2: row.wctBullets[1],
-          bullet3: row.wctBullets[2],
-          bullet4: row.wctBullets[3],
-        },
-        perfectFor: {
-          bullet1: row.pfBullets[0],
-          bullet2: row.pfBullets[1],
-          bullet3: row.pfBullets[2],
-          bullet4: row.pfBullets[3],
-          icon1: row.pfIcons[0],
-          icon2: row.pfIcons[1],
-          icon3: row.pfIcons[2],
-          icon4: row.pfIcons[3],
-        },
+        ...(!row.isChristmas && {
+          whyChooseThis: {
+            bullet1: row.wctBullets[0],
+            bullet2: row.wctBullets[1],
+            bullet3: row.wctBullets[2],
+            bullet4: row.wctBullets[3],
+          },
+          perfectFor: {
+            bullet1: row.pfBullets[0],
+            bullet2: row.pfBullets[1],
+            bullet3: row.pfBullets[2],
+            bullet4: row.pfBullets[3],
+            icon1: row.pfIcons[0],
+            icon2: row.pfIcons[1],
+            icon3: row.pfIcons[2],
+            icon4: row.pfIcons[3],
+          },
+        }),
       },
     };
   });
