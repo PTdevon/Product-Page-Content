@@ -9,18 +9,26 @@ export async function POST(req: NextRequest) {
   const authError = await requireAuth(req);
   if (authError) return authError;
 
-  const { productId } = await req.json() as { productId: string };
+  let body: { productId: string };
+  try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid request" }, { status: 400 }); }
+  const { productId } = body;
 
-  const { product, metafields } = await getProductWithMetafields(productId);
+  const productGid = productId.startsWith("gid://") ? productId : `gid://shopify/Product/${productId}`;
 
-  const type = metafields.productTypePt;
+  let product: Awaited<ReturnType<typeof getProductWithMetafields>>["product"];
+  let metafields: Awaited<ReturnType<typeof getProductWithMetafields>>["metafields"];
+  try {
+    const result = await getProductWithMetafields(productGid);
+    product = result.product;
+    metafields = result.metafields;
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Failed to load product" }, { status: 502 });
+  }
+
+  const type = metafields.productTypePt ?? "";
   const styles = metafields.productStylePt
     ? metafields.productStylePt.split(",").map((s) => s.trim()).filter(Boolean)
     : [];
-
-  if (!type || styles.length === 0) {
-    return NextResponse.json({ error: "No type/style set for this product" }, { status: 400 });
-  }
 
   const result = await generateProductSummary({
     title: product.title,
