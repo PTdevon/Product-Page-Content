@@ -246,18 +246,25 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
     setGeneratingOptions(true);
     setGenerateError(null);
     setSummaryOptions([]);
-    const res = await fetch("/api/generate-summary", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ productId }),
-    });
-    const result = await res.json();
-    setGeneratingOptions(false);
-    if (result.error) {
-      setGenerateError(result.error);
-    } else {
-      setSummaryOptions(result.options ?? []);
-      setHumanReviewed(false);
+    try {
+      const res = await fetch("/api/generate-summary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productId }),
+      });
+      const result = await res.json().catch(() => ({}));
+      if (result.error) {
+        setGenerateError(result.error);
+      } else if (!res.ok) {
+        setGenerateError({ message: "Generation timed out — please try again." });
+      } else {
+        setSummaryOptions(result.options ?? []);
+        setHumanReviewed(false);
+      }
+    } catch {
+      setGenerateError({ message: "Unable to generate — please check your connection and try again." });
+    } finally {
+      setGeneratingOptions(false);
     }
   }
 
