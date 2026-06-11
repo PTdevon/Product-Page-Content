@@ -16,7 +16,7 @@ interface AiBatchResult {
   contextIssues: string[];
 }
 
-async function checkBatch(rows: QualityRow[]): Promise<AiBatchResult[]> {
+async function checkBatch(rows: Pick<QualityRow, "productId" | "title" | "productTypePt" | "summary" | "pfBullets">[]): Promise<AiBatchResult[]> {
   const productsList = rows
     .map((row, i) => {
       const pfList = row.pfBullets.filter((b) => b.trim()).join("; ");
