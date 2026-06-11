@@ -24,9 +24,8 @@ export function matchesFilter(filter: string, cs: StatusValue, contentSt: Status
   if (filter === "needs-classify")    return cs !== "complete";
   if (filter === "ready-to-populate") return cs === "complete" && contentSt !== "complete";
   if (filter === "complete")          return contentSt === "complete";
-  if (filter === "unstarted") return cs === "missing" && contentSt === "missing";
-  if (filter === "missing")     return contentSt === "missing";
-  if (filter === "partial")     return contentSt === "partial";
+  if (filter === "missing")  return cs === "missing" && contentSt === "missing";
+  if (filter === "partial")  return (cs !== "missing" || contentSt !== "missing") && contentSt !== "complete";
   if (filter === "has-content")      return contentSt !== "missing";
   if (filter === "content-partial")  return contentSt === "partial";
   if (filter === "content-complete") return contentSt === "complete";

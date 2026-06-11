@@ -151,7 +151,6 @@ function ProductsPageInner() {
           className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         >
           <option value="">Content Status</option>
-          <option value="unstarted">Not Started</option>
           <option value="missing">No Content</option>
           <option value="partial">Partial Content</option>
           <option value="complete">Complete</option>
