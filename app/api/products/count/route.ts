@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { shopifyGraphQL } from "@/lib/shopify";
+import { classifyStatus, contentStatus, matchesFilter } from "@/lib/product-filters";
 
 const COUNT_PRODUCTS = `
   query CountProducts($first: Int!, $after: String, $query: String) {
@@ -28,37 +29,6 @@ const COUNT_PRODUCTS = `
 type MF = { value: string } | null;
 type RawNode = { tags: string[]; productTypePt: MF; productStylePt: MF; humanReviewed: MF; productSummary: MF; wctBullet1: MF; pfBullet1: MF; seasonalMdPhrase: MF; seasonalFdPhrase: MF; seasonalVdPhrase: MF };
 type CountResult = { products: { edges: { node: RawNode; cursor: string }[]; pageInfo: { hasNextPage: boolean } } };
-
-function classifyStatus(node: RawNode) {
-  const hasType  = !!node.productTypePt?.value;
-  const hasStyle = !!node.productStylePt?.value;
-  if (hasType && hasStyle) return "complete";
-  if (hasType || hasStyle) return "partial";
-  return "missing";
-}
-
-function contentStatus(node: RawNode) {
-  const summary  = node.productSummary?.value ?? "";
-  const wct      = node.wctBullet1?.value ?? "";
-  const pf       = node.pfBullet1?.value ?? "";
-  const seasonal = !!(node.seasonalMdPhrase?.value || node.seasonalFdPhrase?.value || node.seasonalVdPhrase?.value);
-  if (summary && wct && pf) return "complete";
-  if (summary || wct || pf || seasonal) return "partial";
-  return "missing";
-}
-
-function matchesFilter(filter: string, cs: string, contentSt: string): boolean {
-  if (!filter) return true;
-  if (filter === "needs-classify")    return cs !== "complete";
-  if (filter === "ready-to-populate") return cs === "complete" && contentSt !== "complete";
-  if (filter === "complete")          return cs === "complete" && contentSt === "complete";
-  if (filter === "missing")           return cs === "missing" && contentSt === "missing";
-  if (filter === "partial")           return (cs !== "missing" || contentSt !== "missing") && !(cs === "complete" && contentSt === "complete");
-  if (filter === "has-content")      return contentSt !== "missing";
-  if (filter === "content-partial")  return contentSt === "partial";
-  if (filter === "content-complete") return contentSt === "complete";
-  return true;
-}
 
 export async function GET(req: NextRequest) {
   const authError = await requireAuth(req);
@@ -97,10 +67,10 @@ export async function GET(req: NextRequest) {
         if (christmas !== isChristmas) continue;
         const cs        = classifyStatus(edge.node);
         const contentSt = contentStatus(edge.node);
-        if (typeFilter && (edge.node.productTypePt?.value ?? "") !== typeFilter) continue;
+        if (typeFilter && (edge.node.productTypePt?.value ?? "").trim() !== typeFilter.trim()) continue;
         if (styleFilter) {
           const styles = (edge.node.productStylePt?.value ?? "").split(",").map((s: string) => s.trim());
-          if (!styles.includes(styleFilter)) continue;
+          if (!styles.includes(styleFilter.trim())) continue;
         }
         const isHumanReviewed = (edge.node.humanReviewed?.value ?? "") === "true";
         if (reviewedFilter === "true"  && !isHumanReviewed) continue;

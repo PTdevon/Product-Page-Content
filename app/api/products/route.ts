@@ -104,10 +104,10 @@ export async function GET(req: NextRequest) {
       if (christmas !== isChristmas) { filteredByTag++; continue; }
       const cs        = classifyStatus(edge.node);
       const contentSt = contentStatus(edge.node);
-      if (typeFilter && (edge.node.productTypePt?.value ?? "") !== typeFilter) continue;
+      if (typeFilter && (edge.node.productTypePt?.value ?? "").trim() !== typeFilter.trim()) continue;
       if (styleFilter) {
         const styles = (edge.node.productStylePt?.value ?? "").split(",").map((s: string) => s.trim());
-        if (!styles.includes(styleFilter)) continue;
+        if (!styles.includes(styleFilter.trim())) continue;
       }
       const isHumanReviewed = (edge.node.humanReviewed?.value ?? "") === "true";
       if (reviewedFilter === "true"  && !isHumanReviewed) continue;
