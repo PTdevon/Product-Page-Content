@@ -52,6 +52,12 @@ const GET_PRODUCT_METAFIELDS = `
   }
 `;
 
+function normalizeIconValue(v: string): string {
+  if (!v.startsWith("<svg")) return v;
+  const match = v.match(/\bid="([^"]+)"/);
+  return match?.[1] ?? v;
+}
+
 type MF = { value: string } | null;
 interface GetProductResponse {
   product: {
@@ -90,10 +96,10 @@ export async function getProductWithMetafields(productGid: string) {
       bullet2: p.pfBullet2?.value ?? "",
       bullet3: p.pfBullet3?.value ?? "",
       bullet4: p.pfBullet4?.value ?? "",
-      icon1:   p.pfIcon1?.value   ?? "",
-      icon2:   p.pfIcon2?.value   ?? "",
-      icon3:   p.pfIcon3?.value   ?? "",
-      icon4:   p.pfIcon4?.value   ?? "",
+      icon1:   normalizeIconValue(p.pfIcon1?.value   ?? ""),
+      icon2:   normalizeIconValue(p.pfIcon2?.value   ?? ""),
+      icon3:   normalizeIconValue(p.pfIcon3?.value   ?? ""),
+      icon4:   normalizeIconValue(p.pfIcon4?.value   ?? ""),
     },
     seasonalOverrides: {
       mothersDay:    { phrase: p.sMdPhrase?.value ?? "", icon: p.sMdIcon?.value ?? "" },
@@ -160,11 +166,10 @@ export async function setProductMetafields(
     if (pf.bullet2 !== undefined) add("perfect-for", "perfect_bullet_2", pf.bullet2, "single_line_text_field");
     if (pf.bullet3 !== undefined) add("perfect-for", "perfect_bullet_3", pf.bullet3, "single_line_text_field");
     if (pf.bullet4 !== undefined) add("perfect-for", "perfect_bullet_4", pf.bullet4, "single_line_text_field");
-    const iconType = (v: string) => v.startsWith("<svg") ? "multi_line_text_field" : "single_line_text_field";
-    if (pf.icon1 !== undefined) add("perfect-for", "icon_1", pf.icon1, iconType(pf.icon1));
-    if (pf.icon2 !== undefined) add("perfect-for", "icon_2", pf.icon2, iconType(pf.icon2));
-    if (pf.icon3 !== undefined) add("perfect-for", "icon_3", pf.icon3, iconType(pf.icon3));
-    if (pf.icon4 !== undefined) add("perfect-for", "icon_4", pf.icon4, iconType(pf.icon4));
+    if (pf.icon1 !== undefined) add("perfect-for", "icon_1", pf.icon1, "single_line_text_field");
+    if (pf.icon2 !== undefined) add("perfect-for", "icon_2", pf.icon2, "single_line_text_field");
+    if (pf.icon3 !== undefined) add("perfect-for", "icon_3", pf.icon3, "single_line_text_field");
+    if (pf.icon4 !== undefined) add("perfect-for", "icon_4", pf.icon4, "single_line_text_field");
   }
 
   if (data.seasonalOverrides) {
@@ -240,10 +245,10 @@ function parseProductNode(p: GetProductResponse["product"]): ReturnType<typeof g
       bullet2: p.pfBullet2?.value ?? "",
       bullet3: p.pfBullet3?.value ?? "",
       bullet4: p.pfBullet4?.value ?? "",
-      icon1:   p.pfIcon1?.value   ?? "",
-      icon2:   p.pfIcon2?.value   ?? "",
-      icon3:   p.pfIcon3?.value   ?? "",
-      icon4:   p.pfIcon4?.value   ?? "",
+      icon1:   normalizeIconValue(p.pfIcon1?.value   ?? ""),
+      icon2:   normalizeIconValue(p.pfIcon2?.value   ?? ""),
+      icon3:   normalizeIconValue(p.pfIcon3?.value   ?? ""),
+      icon4:   normalizeIconValue(p.pfIcon4?.value   ?? ""),
     },
     seasonalOverrides: {
       mothersDay:    { phrase: p.sMdPhrase?.value ?? "", icon: p.sMdIcon?.value ?? "" },
@@ -317,11 +322,10 @@ export async function setProductsMetafieldsBatch(
       if (pf.bullet2 !== undefined) add("perfect-for", "perfect_bullet_2", pf.bullet2, "single_line_text_field");
       if (pf.bullet3 !== undefined) add("perfect-for", "perfect_bullet_3", pf.bullet3, "single_line_text_field");
       if (pf.bullet4 !== undefined) add("perfect-for", "perfect_bullet_4", pf.bullet4, "single_line_text_field");
-      const iconType = (v: string) => v.startsWith("<svg") ? "multi_line_text_field" : "single_line_text_field";
-      if (pf.icon1 !== undefined) add("perfect-for", "icon_1", pf.icon1, iconType(pf.icon1));
-      if (pf.icon2 !== undefined) add("perfect-for", "icon_2", pf.icon2, iconType(pf.icon2));
-      if (pf.icon3 !== undefined) add("perfect-for", "icon_3", pf.icon3, iconType(pf.icon3));
-      if (pf.icon4 !== undefined) add("perfect-for", "icon_4", pf.icon4, iconType(pf.icon4));
+      if (pf.icon1 !== undefined) add("perfect-for", "icon_1", pf.icon1, "single_line_text_field");
+      if (pf.icon2 !== undefined) add("perfect-for", "icon_2", pf.icon2, "single_line_text_field");
+      if (pf.icon3 !== undefined) add("perfect-for", "icon_3", pf.icon3, "single_line_text_field");
+      if (pf.icon4 !== undefined) add("perfect-for", "icon_4", pf.icon4, "single_line_text_field");
     }
     if (data.seasonalOverrides) {
       const s = data.seasonalOverrides;

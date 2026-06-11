@@ -1,13 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
-import { getBuiltinIcons } from "@/lib/icons";
-import {
-  getUploadedIcons,
-  addUploadedIcon,
-  renameUploadedIcon,
-  deleteUploadedIcon,
-} from "@/lib/uploaded-icons-store";
-import { findIconUsage, getUsedBuiltinIconNames } from "@/lib/icon-usage";
+import { getAllIcons, getIcon, createIcon, deleteIcon } from "@/lib/icon-metaobjects-store";
+import { findIconUsage } from "@/lib/icon-usage";
+import { minifySvg } from "@/lib/icons";
 import createDOMPurify from "dompurify";
 import { JSDOM } from "jsdom";
 
@@ -16,130 +11,170 @@ const DOMPurify = createDOMPurify(new JSDOM("").window as any);
 
 export const dynamic = "force-dynamic";
 
+function cleanIconSvg(raw: string, name: string): string | null {
+  const sanitized = DOMPurify.sanitize(raw, {
+    USE_PROFILES: { svg: true, svgFilters: true },
+  });
+  if (!sanitized) return null;
+
+  let svg = sanitized;
+  svg = svg.replace(/\s+width="[^"]*"/g, "");
+  svg = svg.replace(/\s+height="[^"]*"/g, "");
+  svg = svg.replace(/\s+class="[^"]*"/g, "");
+
+  if (svg.includes('stroke-width="')) {
+    svg = svg.replace(/stroke-width="[^"]*"/g, 'stroke-width="2"');
+  }
+
+  if (/(<svg[^>]*)\bid="[^"]*"/.test(svg)) {
+    svg = svg.replace(/(<svg[^>]*)\bid="[^"]*"/, `$1id="${name}"`);
+  } else {
+    svg = svg.replace(/^<svg/, `<svg id="${name}"`);
+  }
+
+  return minifySvg(svg);
+}
+
 export async function GET(req: NextRequest) {
   const authError = await requireAuth(req);
   if (authError) return authError;
 
-  // ?builtinUsage=true → return which built-in icons are in use
-  if (req.nextUrl.searchParams.get("builtinUsage") === "true") {
-    const used = await getUsedBuiltinIconNames();
-    return NextResponse.json({ usedBuiltins: Array.from(used) });
+  const usageName = req.nextUrl.searchParams.get("usage");
+  if (usageName) {
+    try {
+      const usage = await findIconUsage(usageName);
+      return NextResponse.json(usage);
+    } catch (e) {
+      return NextResponse.json(
+        { error: e instanceof Error ? e.message : "Failed to check usage" },
+        { status: 500 }
+      );
+    }
   }
 
-  // ?check=iconname → return usage info for that icon
-  const check = req.nextUrl.searchParams.get("check");
-  if (check) {
-    const uploaded = await getUploadedIcons();
-    const icon = uploaded.find((i) => i.name === check);
-    if (!icon) return NextResponse.json({ error: "Icon not found" }, { status: 404 });
-    const usage = await findIconUsage(icon.svg);
-    return NextResponse.json(usage);
+  try {
+    const icons = await getAllIcons();
+    return NextResponse.json({ icons });
+  } catch (e) {
+    console.error("[GET /api/icons]", e);
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "Failed to load icons" },
+      { status: 500 }
+    );
   }
-
-  const uploaded = await getUploadedIcons();
-  return NextResponse.json({ builtIn: getBuiltinIcons(), uploaded });
 }
 
 export async function POST(req: NextRequest) {
   const authError = await requireAuth(req);
   if (authError) return authError;
 
-  const formData = await req.formData();
-  const file = formData.get("file") as File | null;
-
-  if (!file || !file.name.toLowerCase().endsWith(".svg")) {
-    return NextResponse.json({ error: "An SVG file is required" }, { status: 400 });
+  let body: { name?: string; svg?: string };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const rawSvg = await file.text();
+  const rawSvg = body.svg?.trim() ?? "";
   if (!rawSvg.includes("<svg")) {
-    return NextResponse.json({ error: "File does not appear to be a valid SVG" }, { status: 400 });
+    return NextResponse.json({ error: "SVG content is required" }, { status: 400 });
   }
 
-  const svg = DOMPurify.sanitize(rawSvg, {
-    USE_PROFILES: { svg: true, svgFilters: true },
-  });
-
-  if (!svg) {
-    return NextResponse.json({ error: "SVG file contains unsafe content and could not be sanitised" }, { status: 400 });
-  }
-
-  const name = file.name
-    .replace(/\.svg$/i, "")
+  const name = (body.name?.trim() ?? "")
     .toLowerCase()
     .replace(/[^a-z0-9-]/g, "-")
     .replace(/-+/g, "-")
     .replace(/^-+|-+$/g, "");
 
   if (!name) {
-    return NextResponse.json({ error: "Could not derive a valid name from the filename" }, { status: 400 });
+    return NextResponse.json(
+      { error: "A valid name is required (letters, numbers, hyphens)" },
+      { status: 400 }
+    );
   }
 
-  const builtIn = getBuiltinIcons();
-  if (builtIn.includes(name)) {
-    return NextResponse.json({ error: `"${name}" conflicts with a built-in icon name` }, { status: 400 });
+  const cleanedSvg = cleanIconSvg(rawSvg, name);
+  if (!cleanedSvg) {
+    return NextResponse.json(
+      { error: "SVG contains unsafe content and could not be sanitised" },
+      { status: 400 }
+    );
+  }
+
+  const nameConflict = await getIcon(name);
+  if (nameConflict) {
+    return NextResponse.json({ error: `"${name}" is already in use` }, { status: 400 });
   }
 
   try {
-    await addUploadedIcon({ name, svg });
+    const icon = await createIcon(name, cleanedSvg);
+    return NextResponse.json(icon);
   } catch (e) {
     return NextResponse.json(
-      { error: (e instanceof Error ? e.message : null) ?? "Failed to save icon" },
+      { error: e instanceof Error ? e.message : "Failed to save icon" },
       { status: 500 }
     );
   }
-  return NextResponse.json({ name, svg });
 }
 
 export async function PATCH(req: NextRequest) {
   const authError = await requireAuth(req);
   if (authError) return authError;
 
-  const { oldName, newName } = (await req.json()) as {
-    oldName?: string;
-    newName?: string;
-  };
+  let body: { oldName?: string; newName?: string };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
 
-  if (!oldName || !newName) {
+  const { oldName, newName: rawNewName } = body;
+  if (!oldName || !rawNewName) {
     return NextResponse.json({ error: "oldName and newName are required" }, { status: 400 });
   }
 
-  const sanitized = newName
+  const newName = rawNewName
     .toLowerCase()
     .replace(/[^a-z0-9-]/g, "-")
     .replace(/-+/g, "-")
     .replace(/^-+|-+$/g, "");
 
-  if (!sanitized) {
+  if (!newName) {
     return NextResponse.json(
       { error: "Invalid name — use letters, numbers, and hyphens only" },
       { status: 400 }
     );
   }
 
-  const builtIn = getBuiltinIcons();
-  if (builtIn.includes(sanitized)) {
-    return NextResponse.json(
-      { error: `"${sanitized}" conflicts with a built-in icon name` },
-      { status: 400 }
-    );
+  if (newName === oldName) {
+    return NextResponse.json({ name: newName });
   }
 
-  const existing = await getUploadedIcons();
-  if (sanitized !== oldName && existing.some((i) => i.name === sanitized)) {
-    return NextResponse.json(
-      { error: `"${sanitized}" is already in use by another icon` },
-      { status: 400 }
-    );
+  const existing = await getIcon(oldName);
+  if (!existing) {
+    return NextResponse.json({ error: "Icon not found" }, { status: 404 });
+  }
+
+  const usage = await findIconUsage(oldName);
+  if (usage.products.length > 0 || usage.phrases.length > 0) {
+    return NextResponse.json({ error: "in-use", ...usage }, { status: 409 });
   }
 
   try {
-    await renameUploadedIcon(oldName, sanitized);
-    return NextResponse.json({ name: sanitized });
+    const created = await createIcon(newName, existing.svg);
+    try {
+      await deleteIcon(existing.id);
+    } catch (delErr) {
+      // Clean up the newly created icon so we don't leave behind a duplicate
+      try { await deleteIcon(created.id); } catch { /* best-effort */ }
+      throw delErr;
+    }
+    return NextResponse.json({ name: created.handle });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Rename failed";
-    const status = msg.includes("not found") ? 404 : 500;
-    return NextResponse.json({ error: msg }, { status });
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "Rename failed" },
+      { status: 500 }
+    );
   }
 }
 
@@ -148,24 +183,27 @@ export async function DELETE(req: NextRequest) {
   if (authError) return authError;
 
   const name = req.nextUrl.searchParams.get("name");
-  if (!name) return NextResponse.json({ error: "name is required" }, { status: 400 });
+  if (!name) {
+    return NextResponse.json({ error: "name is required" }, { status: 400 });
+  }
 
-  const existing = await getUploadedIcons();
-  const icon = existing.find((i) => i.name === name);
-  if (!icon) return NextResponse.json({ error: "Icon not found" }, { status: 404 });
+  const icon = await getIcon(name);
+  if (!icon) {
+    return NextResponse.json({ error: "Icon not found" }, { status: 404 });
+  }
 
-  const { products, phrases } = await findIconUsage(icon.svg);
-  if (products.length > 0 || phrases.length > 0) {
-    return NextResponse.json({ error: "in-use", products, phrases }, { status: 409 });
+  const usage = await findIconUsage(name);
+  if (usage.products.length > 0 || usage.phrases.length > 0) {
+    return NextResponse.json({ error: "in-use", ...usage }, { status: 409 });
   }
 
   try {
-    await deleteUploadedIcon(name);
+    await deleteIcon(icon.id);
+    return NextResponse.json({ ok: true });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Delete failed" },
       { status: 500 }
     );
   }
-  return NextResponse.json({ ok: true });
 }

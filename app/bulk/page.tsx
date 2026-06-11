@@ -6,8 +6,10 @@ import Nav from "@/components/Nav";
 import Pagination from "@/components/Pagination";
 import SwapModal from "@/components/SwapModal";
 import { Tooltip } from "@/components/Tooltip";
+import { IconImg } from "@/components/IconsProvider";
 import type { ProductSummary } from "@/lib/types";
 import { PRODUCT_TAXONOMY } from "@/data/taxonomy";
+import { useCredits } from "@/components/CreditsProvider";
 
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -86,6 +88,7 @@ function ContentBadge({ status }: { status: ProductSummary["contentStatus"] }) {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function BulkPage() {
+  const { creditsExhausted, signalCreditsExhausted } = useCredits();
   // Product list state
   const [products, setProducts] = useState<ProductSummary[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
@@ -660,9 +663,16 @@ export default function BulkPage() {
     const rows: ContentRow[] = (data.rows ?? []).map((r) => ({ ...r, dirty: false, isChristmas: christmas, humanReviewed: reviewedMap.get(r.productId) ?? false }));
     setContentRows(rows);
     setContentPhase("review");
+    if (rows.some((r) => r.summaryError?.billingUrl)) {
+      signalCreditsExhausted();
+    }
   }
 
   async function handleRegenerateContent(productId: string) {
+    if (creditsExhausted) {
+      signalCreditsExhausted();
+      return;
+    }
     const row = contentRows.find((r) => r.productId === productId);
     setContentRows((rows) => rows.map((r) => r.productId === productId ? { ...r, regenerating: true, regenerateError: undefined } : r));
 
@@ -685,6 +695,7 @@ export default function BulkPage() {
         try {
           const errData = await res.json();
           if (errData.error?.message) errorInfo = errData.error;
+          if (errData.error?.type === "credits_exhausted") signalCreditsExhausted();
         } catch { /* ignore parse failure */ }
         setContentRows((rows) => rows.map((r) =>
           r.productId === productId ? { ...r, regenerating: false, regenerateError: errorInfo } : r
@@ -1447,13 +1458,7 @@ export default function BulkPage() {
                                       </div>
                                     )}
                                     <span className="shrink-0 w-6 h-6 flex items-center justify-center">
-                                      {!icon ? (
-                                        <span className="text-gray-300 text-xs">—</span>
-                                      ) : icon.startsWith("<svg") ? (
-                                        <span className="w-5 h-5 opacity-60 [&>svg]:w-5 [&>svg]:h-5" dangerouslySetInnerHTML={{ __html: icon }} />
-                                      ) : (
-                                        <img src={icon.startsWith("https://") ? icon : `/icons/${icon}.svg`} alt="" className="w-5 h-5 opacity-60" />
-                                      )}
+                                      <IconImg icon={icon || ""} size={20} className="opacity-60" />
                                     </span>
                                     <span className="flex-1 text-sm text-gray-700 truncate">
                                       {phrase || <em className="text-gray-400 not-italic">Empty</em>}

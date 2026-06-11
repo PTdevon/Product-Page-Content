@@ -5,6 +5,8 @@ import { PRODUCT_TAXONOMY } from "@/data/taxonomy";
 import SwapModal from "./SwapModal";
 import IconPicker from "./IconPicker";
 import { Tooltip } from "./Tooltip";
+import { useCredits } from "./CreditsProvider";
+import { IconImg } from "./IconsProvider";
 
 const WCT_SLOTS = [
   {
@@ -106,6 +108,7 @@ function SectionHeading({ children, action }: { children: React.ReactNode; actio
 }
 
 export default function ProductEditor({ productId, productTitle, onSaved, onClose, isChristmas = false }: Props) {
+  const { creditsExhausted, signalCreditsExhausted } = useCredits();
   const [data, setData] = useState<ProductData | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -243,6 +246,10 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
 
 
   async function handleGenerateSummary() {
+    if (creditsExhausted) {
+      signalCreditsExhausted();
+      return;
+    }
     setGeneratingOptions(true);
     setGenerateError(null);
     setSummaryOptions([]);
@@ -254,6 +261,7 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
       });
       const result = await res.json().catch(() => ({}));
       if (result.error) {
+        if (result.error.type === "credits_exhausted") signalCreditsExhausted();
         setGenerateError(result.error);
       } else if (!res.ok) {
         setGenerateError({ message: "Generation timed out — please try again." });
@@ -643,15 +651,8 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
                       <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-gray-300 group-hover:text-gray-500">
                         <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 8v8M8 12h8"/>
                       </svg>
-                    ) : slot.icon.startsWith("<svg") ? (
-                      <span
-                        className="w-5 h-5 flex items-center justify-center opacity-70 group-hover:opacity-100 [&>svg]:w-5 [&>svg]:h-5"
-                        dangerouslySetInnerHTML={{ __html: slot.icon }}
-                      />
-                    ) : slot.icon.startsWith("https://") ? (
-                      <img src={slot.icon} alt="" className="w-5 h-5 opacity-70 group-hover:opacity-100" />
                     ) : (
-                      <img src={`/icons/${slot.icon}.svg`} alt={slot.icon} className="w-5 h-5 opacity-70 group-hover:opacity-100" />
+                      <IconImg icon={slot.icon} size={20} className="opacity-70 group-hover:opacity-100" />
                     )}
                   </button>
                   </Tooltip>

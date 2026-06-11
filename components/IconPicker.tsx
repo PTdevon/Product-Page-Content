@@ -1,7 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import type { UploadedIcon } from "@/lib/uploaded-icons-store";
+
+interface IconEntry {
+  id: string;
+  handle: string;
+  svg: string;
+}
 
 interface Props {
   current: string;
@@ -10,26 +15,23 @@ interface Props {
 }
 
 export default function IconPicker({ current, onSelect, onClose }: Props) {
-  const [builtIn, setBuiltIn] = useState<string[]>([]);
-  const [uploaded, setUploaded] = useState<UploadedIcon[]>([]);
+  const [icons, setIcons] = useState<IconEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetch("/api/icons")
       .then((r) => r.json())
       .then((d) => {
-        setBuiltIn(d.builtIn ?? []);
-        setUploaded(d.uploaded ?? []);
-        setLoading(false);
-      });
+        setIcons(d.icons ?? []);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
-  function select(icon: string) {
-    onSelect(icon);
+  function select(handle: string) {
+    onSelect(handle);
     onClose();
   }
-
-  const currentIsUploaded = current.startsWith("<svg");
 
   return (
     <div
@@ -50,57 +52,37 @@ export default function IconPicker({ current, onSelect, onClose }: Props) {
           </button>
         </div>
 
-        <div className="overflow-y-auto flex-1 p-4 space-y-4">
+        <div className="overflow-y-auto flex-1 p-4">
           {loading ? (
             <p className="text-sm text-gray-400 text-center py-4">Loading…</p>
+          ) : icons.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-4">No icons available.</p>
           ) : (
-            <>
-              <div className="grid grid-cols-5 gap-2">
-                {builtIn.map((name) => {
-                  const isSelected = current === name;
-                  return (
-                    <button
-                      key={name}
-                      onClick={() => select(name)}
-                      title={name}
-                      className={`flex flex-col items-center gap-1 p-2 rounded-lg border transition-colors ${
-                        isSelected ? "border-blue-500 bg-blue-50" : "border-gray-200 hover:border-gray-400 hover:bg-gray-50"
-                      }`}
-                    >
-                      <img src={`/icons/${name}.svg`} alt={name} className="w-6 h-6" />
-                      <span className="text-[11px] text-gray-500 truncate w-full text-center">{name}</span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {uploaded.length > 0 && (
-                <>
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Custom</p>
-                  <div className="grid grid-cols-5 gap-2">
-                    {uploaded.map(({ name, svg }) => {
-                      const isSelected = currentIsUploaded && current === svg;
-                      return (
-                        <button
-                          key={name}
-                          onClick={() => select(svg)}
-                          title={name}
-                          className={`flex flex-col items-center gap-1 p-2 rounded-lg border transition-colors ${
-                            isSelected ? "border-blue-500 bg-blue-50" : "border-gray-200 hover:border-gray-400 hover:bg-gray-50"
-                          }`}
-                        >
-                          <span
-                            className="w-6 h-6 flex items-center justify-center [&>svg]:w-6 [&>svg]:h-6"
-                            dangerouslySetInnerHTML={{ __html: svg }}
-                          />
-                          <span className="text-[11px] text-gray-500 truncate w-full text-center">{name}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </>
-              )}
-            </>
+            <div className="grid grid-cols-5 gap-2">
+              {icons.map((icon) => {
+                const isSelected = current === icon.handle;
+                return (
+                  <button
+                    key={icon.handle}
+                    onClick={() => select(icon.handle)}
+                    title={icon.handle}
+                    className={`flex flex-col items-center gap-1 p-2 rounded-lg border transition-colors ${
+                      isSelected
+                        ? "border-blue-500 bg-blue-50"
+                        : "border-gray-200 hover:border-gray-400 hover:bg-gray-50"
+                    }`}
+                  >
+                    <span
+                      className="w-6 h-6 flex items-center justify-center [&>svg]:w-6 [&>svg]:h-6"
+                      dangerouslySetInnerHTML={{ __html: icon.svg }}
+                    />
+                    <span className="text-[11px] text-gray-500 truncate w-full text-center">
+                      {icon.handle}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           )}
         </div>
       </div>

@@ -3,7 +3,6 @@ import { requireAuth } from "@/lib/auth";
 import { getProductWithMetafields, setProductMetafields } from "@/lib/metafields";
 import { assignWhyChooseThis, assignPerfectFor } from "@/lib/assignment-engine";
 import { getSettings } from "@/lib/settings-store";
-import { resolveIconForMetafield } from "@/lib/icons";
 import { generateProductSummary } from "@/lib/generate-summary";
 import { getPfLibrary } from "@/lib/pf-store";
 import { getWctLibrary } from "@/lib/wct-store";
@@ -113,10 +112,10 @@ export async function POST(req: NextRequest) {
               bullet2: pf.bullets[1] ?? "",
               bullet3: pf.bullets[2] ?? "",
               bullet4: pf.bullets[3] ?? "",
-              icon1: resolveIconForMetafield(pf.icons[0] ?? ""),
-              icon2: resolveIconForMetafield(pf.icons[1] ?? ""),
-              icon3: resolveIconForMetafield(pf.icons[2] ?? ""),
-              icon4: resolveIconForMetafield(pf.icons[3] ?? ""),
+              icon1: pf.icons[0] ?? "",
+              icon2: pf.icons[1] ?? "",
+              icon3: pf.icons[2] ?? "",
+              icon4: pf.icons[3] ?? "",
             },
             ...(summaryText ? { productSummary: summaryText } : {}),
           });

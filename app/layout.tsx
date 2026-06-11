@@ -3,6 +3,8 @@ import Script from "next/script";
 import "./globals.css";
 import { TooltipProvider } from "@/components/Tooltip";
 import AppBridgeAuth from "@/components/AppBridgeAuth";
+import { CreditsProvider } from "@/components/CreditsProvider";
+import { IconsProvider } from "@/components/IconsProvider";
 
 export const metadata: Metadata = {
   title: "PT Product Page Content",
@@ -22,9 +24,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           />
         )}
         <AppBridgeAuth />
-        <TooltipProvider>
-          {children}
-        </TooltipProvider>
+        <CreditsProvider>
+          <IconsProvider>
+            <TooltipProvider>
+              {children}
+            </TooltipProvider>
+          </IconsProvider>
+        </CreditsProvider>
       </body>
     </html>
   );

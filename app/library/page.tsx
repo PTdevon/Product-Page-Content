@@ -11,6 +11,7 @@ import { PRODUCT_TAXONOMY } from "@/data/taxonomy";
 import type { WhyChooseThisEntry } from "@/lib/types";
 import type { WCTEdit, PFPhraseEdit } from "@/lib/library-edits-store";
 import type { PFPhraseRow } from "@/lib/pf-store";
+import { IconImg } from "@/components/IconsProvider";
 
 const WCT_CATEGORIES = ["Stands Out", "Gift Impact", "Trusted Pick", "Worth Keeping"] as const;
 const PF_CATEGORIES  = ["Occasion", "Person", "Context"] as const;
@@ -20,21 +21,6 @@ type WCTRow = WhyChooseThisEntry & { _edit: WCTEdit | null };
 type PushEvent =
   | { type: "progress"; title: string; status: "updated" | "error" }
   | { type: "done"; total: number; updated: number; swapped?: number; alternated?: number; skipped: number; failed: number };
-
-function IconImg({ icon, size = 20 }: { icon: string; size?: number }) {
-  if (!icon) return <span className="text-gray-300 text-xs">—</span>;
-  if (icon.startsWith("https://"))
-    return <img src={icon} alt="" style={{ width: size, height: size }} className="object-contain" />;
-  if (icon.startsWith("<svg"))
-    return (
-      <span
-        style={{ width: size, height: size, minWidth: size, display: "inline-flex", alignItems: "center", overflow: "hidden" }}
-        dangerouslySetInnerHTML={{ __html: icon.replace(/<svg([^>]*)>/, (_, attrs) =>
-          `<svg${attrs.replace(/\s*(width|height)="[^"]*"/g, "")} width="${size}" height="${size}" style="display:block">`) }}
-      />
-    );
-  return <img src={`/icons/${icon}.svg`} alt={icon} style={{ width: size, height: size }} className="object-contain" />;
-}
 
 // ── WCT Edit Modal (unchanged) ────────────────────────────────────────────────
 

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import type { WhyChooseThisEntry, PerfectForEntry } from "@/lib/types";
+import { IconImg } from "@/components/IconsProvider";
 
 const WCT_CATEGORY_MAP: Record<number, string> = {
   0: "Stands Out",
@@ -145,19 +146,11 @@ export default function SwapModal({ type, slotIndex, slotLabel, productType, pro
                       className={`w-full text-left px-5 py-3 flex items-center gap-3 transition-colors ${alreadySelected ? "opacity-40 cursor-not-allowed bg-gray-50" : "hover:bg-gray-50 group"}`}
                     >
                       {e.icon && (
-                        e.icon.startsWith("<svg") ? (
-                          <span
-                            className={`w-5 h-5 shrink-0 flex items-center justify-center [&>svg]:w-5 [&>svg]:h-5 ${alreadySelected ? "opacity-60" : "opacity-60 group-hover:opacity-90"}`}
-                            dangerouslySetInnerHTML={{ __html: e.icon.replace(/<svg([^>]*)>/, (_, a) =>
-                              `<svg${a.replace(/\s*(width|height)="[^"]*"/g, "")} width="20" height="20" style="display:block">`) }}
-                          />
-                        ) : (
-                          <img
-                            src={e.icon.startsWith("https://") ? e.icon : `/icons/${e.icon}.svg`}
-                            alt=""
-                            className={`w-5 h-5 shrink-0 ${alreadySelected ? "opacity-60" : "opacity-60 group-hover:opacity-90"}`}
-                          />
-                        )
+                        <IconImg
+                          icon={e.icon}
+                          size={20}
+                          className={`shrink-0 ${alreadySelected ? "opacity-60" : "opacity-60 group-hover:opacity-90"}`}
+                        />
                       )}
                       <div className="min-w-0">
                         <span className={`text-sm ${alreadySelected ? "text-gray-400" : "text-gray-800 group-hover:text-gray-900"}`}>{e.phrase}</span>

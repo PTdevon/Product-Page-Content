@@ -2,35 +2,55 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
 vi.mock("@/lib/auth", () => ({ requireAuth: vi.fn().mockResolvedValue(null) }));
-vi.mock("@/lib/icons", () => ({ getBuiltinIcons: vi.fn() }));
-vi.mock("@/lib/uploaded-icons-store", () => ({
-  getUploadedIcons: vi.fn(),
-  addUploadedIcon: vi.fn(),
+vi.mock("@/lib/icon-metaobjects-store", () => ({
+  getAllIcons: vi.fn(),
+  getIcon: vi.fn(),
+  createIcon: vi.fn(),
+  deleteIcon: vi.fn(),
+  ensureDefinitionAndSeed: vi.fn(),
+}));
+vi.mock("@/lib/icon-usage", () => ({
+  findIconUsage: vi.fn().mockResolvedValue({ products: [], phrases: [] }),
 }));
 
-import { GET, POST } from "@/app/api/icons/route";
-import { getBuiltinIcons } from "@/lib/icons";
-import { getUploadedIcons, addUploadedIcon } from "@/lib/uploaded-icons-store";
+import { GET, POST, DELETE } from "@/app/api/icons/route";
+import { getAllIcons, getIcon, createIcon, deleteIcon, ensureDefinitionAndSeed } from "@/lib/icon-metaobjects-store";
 import { requireAuth } from "@/lib/auth";
+
+const SAMPLE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/></svg>`;
 
 beforeEach(() => {
   vi.mocked(requireAuth).mockResolvedValue(null);
-  vi.mocked(getBuiltinIcons).mockReturnValue(["heart", "home", "star"]);
-  vi.mocked(getUploadedIcons).mockResolvedValue([]);
-  vi.mocked(addUploadedIcon).mockResolvedValue(undefined);
+  vi.mocked(getAllIcons).mockResolvedValue([
+    { id: "gid://shopify/Metaobject/1", handle: "heart", svg: SAMPLE_SVG },
+    { id: "gid://shopify/Metaobject/2", handle: "star", svg: SAMPLE_SVG },
+  ]);
+  vi.mocked(ensureDefinitionAndSeed).mockResolvedValue(undefined);
+  vi.mocked(createIcon).mockResolvedValue({ id: "gid://shopify/Metaobject/3", handle: "my-icon", svg: SAMPLE_SVG });
+  vi.mocked(deleteIcon).mockResolvedValue(undefined);
 });
 
-function makeSvgFile(name: string, content = "<svg xmlns='http://www.w3.org/2000/svg'><circle/></svg>"): File {
-  return new File([content], name, { type: "image/svg+xml" });
-}
-
 describe("GET /api/icons", () => {
-  it("returns builtIn and uploaded icon lists", async () => {
+  it("returns icons array", async () => {
     const req = new NextRequest("http://localhost/api/icons");
     const res = await GET(req);
     const body = await res.json();
-    expect(body.builtIn).toEqual(["heart", "home", "star"]);
-    expect(Array.isArray(body.uploaded)).toBe(true);
+    expect(Array.isArray(body.icons)).toBe(true);
+    expect(body.icons).toHaveLength(2);
+  });
+
+  it("each icon has handle, id, and svg", async () => {
+    const req = new NextRequest("http://localhost/api/icons");
+    const res = await GET(req);
+    const body = await res.json();
+    expect(body.icons[0]).toMatchObject({ handle: "heart", id: expect.any(String), svg: expect.any(String) });
+  });
+
+  it("calls ensureDefinitionAndSeed when icons list is empty", async () => {
+    vi.mocked(getAllIcons).mockResolvedValueOnce([]);
+    const req = new NextRequest("http://localhost/api/icons");
+    await GET(req);
+    expect(ensureDefinitionAndSeed).toHaveBeenCalled();
   });
 
   it("returns 401 when auth fails", async () => {
@@ -42,73 +62,72 @@ describe("GET /api/icons", () => {
   });
 });
 
-describe("POST /api/icons (upload)", () => {
-  it("accepts a valid SVG file and returns name and svg", async () => {
-    const formData = new FormData();
-    formData.append("file", makeSvgFile("my-icon.svg"));
+describe("POST /api/icons", () => {
+  it("accepts JSON { name, svg } and returns the created icon", async () => {
     const req = new NextRequest("http://localhost/api/icons", {
       method: "POST",
-      body: formData,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "my-icon", svg: SAMPLE_SVG }),
     });
     const res = await POST(req);
     const body = await res.json();
     expect(res.status).toBe(200);
-    expect(body.name).toBe("my-icon");
-    expect(addUploadedIcon).toHaveBeenCalled();
+    expect(body.handle).toBe("my-icon");
+    expect(createIcon).toHaveBeenCalled();
   });
 
-  it("slugifies filename — spaces and special chars become hyphens", async () => {
-    const formData = new FormData();
-    formData.append("file", makeSvgFile("My Cool Icon!.svg"));
+  it("rejects missing svg", async () => {
     const req = new NextRequest("http://localhost/api/icons", {
       method: "POST",
-      body: formData,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "my-icon" }),
     });
     const res = await POST(req);
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects missing name", async () => {
+    const req = new NextRequest("http://localhost/api/icons", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ svg: SAMPLE_SVG }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects non-SVG content", async () => {
+    const req = new NextRequest("http://localhost/api/icons", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "test", svg: "not-an-svg" }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("DELETE /api/icons", () => {
+  it("deletes an icon when not in use", async () => {
+    vi.mocked(getIcon).mockResolvedValue({ id: "gid://shopify/Metaobject/1", handle: "heart", svg: SAMPLE_SVG });
+    const req = new NextRequest("http://localhost/api/icons?name=heart", { method: "DELETE" });
+    const res = await DELETE(req);
     const body = await res.json();
-    expect(body.name).toMatch(/^my-cool-icon/);
+    expect(res.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(deleteIcon).toHaveBeenCalled();
   });
 
-  it("rejects non-SVG file extension", async () => {
-    const formData = new FormData();
-    formData.append("file", new File(["<svg/>"], "icon.png", { type: "image/png" }));
-    const req = new NextRequest("http://localhost/api/icons", {
-      method: "POST",
-      body: formData,
-    });
-    const res = await POST(req);
-    expect(res.status).toBe(400);
+  it("returns 404 for unknown icon", async () => {
+    vi.mocked(getIcon).mockResolvedValue(null);
+    const req = new NextRequest("http://localhost/api/icons?name=nonexistent", { method: "DELETE" });
+    const res = await DELETE(req);
+    expect(res.status).toBe(404);
   });
 
-  it("rejects file without <svg content", async () => {
-    const formData = new FormData();
-    formData.append("file", makeSvgFile("icon.svg", "not-svg-content"));
-    const req = new NextRequest("http://localhost/api/icons", {
-      method: "POST",
-      body: formData,
-    });
-    const res = await POST(req);
-    expect(res.status).toBe(400);
-  });
-
-  it("rejects name that conflicts with a built-in icon", async () => {
-    const formData = new FormData();
-    formData.append("file", makeSvgFile("heart.svg")); // 'heart' is in builtIn mock
-    const req = new NextRequest("http://localhost/api/icons", {
-      method: "POST",
-      body: formData,
-    });
-    const res = await POST(req);
-    expect(res.status).toBe(400);
-  });
-
-  it("rejects missing file", async () => {
-    const formData = new FormData();
-    const req = new NextRequest("http://localhost/api/icons", {
-      method: "POST",
-      body: formData,
-    });
-    const res = await POST(req);
+  it("returns 400 when name param is missing", async () => {
+    const req = new NextRequest("http://localhost/api/icons", { method: "DELETE" });
+    const res = await DELETE(req);
     expect(res.status).toBe(400);
   });
 });

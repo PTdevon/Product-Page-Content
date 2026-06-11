@@ -5,6 +5,8 @@ import Nav from "@/components/Nav";
 import { PRODUCT_TAXONOMY } from "@/data/taxonomy";
 import type { ProductSummary } from "@/lib/types";
 import { runNonAiChecks, type QualityIssue, type CheckId } from "@/lib/content-quality-checks";
+import { useCredits } from "@/components/CreditsProvider";
+import { IconImg } from "@/components/IconsProvider";
 
 interface ContentRow {
   productId: string;
@@ -58,6 +60,7 @@ function formatCost(count: number): string {
 }
 
 export default function QualityReportPage() {
+  const { signalCreditsExhausted } = useCredits();
   const [phase, setPhase] = useState<Phase>("idle");
   const [stageLabel, setStageLabel] = useState("");
   const [progress, setProgress] = useState({ done: 0, total: 0 });
@@ -300,6 +303,7 @@ export default function QualityReportPage() {
             } = await res.json();
 
             if (data.creditsExhausted) {
+              signalCreditsExhausted();
               setAiError("Anthropic account has run out of credits — AI checks were skipped.");
               break;
             }
@@ -663,7 +667,7 @@ export default function QualityReportPage() {
                                       <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-1">
                                         {issue.meta.duplicateIconPhrases.map((item, i) => (
                                           <span key={i} className="flex items-center gap-1 text-xs text-gray-500">
-                                            <img src={`/icons/${item.iconKey}.svg`} alt="" className="w-3.5 h-3.5 opacity-50" />
+                                            <IconImg icon={item.iconKey} size={14} className="opacity-50" />
                                             {item.phrase}
                                           </span>
                                         ))}

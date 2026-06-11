@@ -28,7 +28,8 @@ const LIST_QUERY = `
 
 const CREATE_MUTATION = `
   mutation CreateSettings($fields: [MetaobjectFieldInput!]!) {
-    metaobjectCreate(metaobject: { type: "${METAOBJECT_TYPE}", fields: $fields }) {
+    metaobjectCreate(metaobject: { type: "${METAOBJECT_TYPE}", handle: "main", fields: $fields }) {
+      metaobject { id }
       userErrors { field message }
     }
   }
@@ -37,10 +38,31 @@ const CREATE_MUTATION = `
 const UPDATE_MUTATION = `
   mutation UpdateSettings($id: ID!, $fields: [MetaobjectFieldInput!]!) {
     metaobjectUpdate(id: $id, metaobject: { fields: $fields }) {
+      metaobject { id }
       userErrors { field message }
     }
   }
 `;
+
+const CREATE_DEF = `
+  mutation CreateSettingsDef {
+    metaobjectDefinitionCreate(definition: {
+      type: "${METAOBJECT_TYPE}",
+      name: "PDP App Settings",
+      fieldDefinitions: [
+        { name: "Date Ranges", key: "date_ranges", type: "multi_line_text_field" },
+        { name: "Interest Keywords", key: "interest_keywords", type: "multi_line_text_field" }
+      ]
+    }) {
+      metaobjectDefinition { id }
+      userErrors { field message }
+    }
+  }
+`;
+
+type ShopifyNode = { id: string; fields: { key: string; value: string }[] };
+
+let _nodeId: string | null = null;
 
 function settingsToFields(s: AppSettings) {
   return [
@@ -69,29 +91,108 @@ function fieldsToSettings(fields: { key: string; value: string }[]): AppSettings
 export async function getSettings(): Promise<AppSettings> {
   try {
     const data = await shopifyGraphQL<{
-      metaobjects: { nodes: { id: string; fields: { key: string; value: string }[] }[] };
+      metaobjects: { nodes: ShopifyNode[] };
     }>(LIST_QUERY);
     const node = data.metaobjects.nodes[0];
     if (!node) return DEFAULT_SETTINGS;
+    _nodeId = node.id;
     return fieldsToSettings(node.fields);
   } catch {
     return DEFAULT_SETTINGS;
   }
 }
 
-export async function saveSettings(settings: AppSettings): Promise<void> {
+async function persist(settings: AppSettings): Promise<void> {
   const fields = settingsToFields(settings);
 
-  // Check if metaobject already exists
-  const existing = await shopifyGraphQL<{
-    metaobjects: { nodes: { id: string }[] };
-  }>(LIST_QUERY);
-
-  const node = existing.metaobjects.nodes[0];
-
-  if (node) {
-    await shopifyGraphQL(UPDATE_MUTATION, { id: node.id, fields });
-  } else {
-    await shopifyGraphQL(CREATE_MUTATION, { fields });
+  if (_nodeId) {
+    const res = await shopifyGraphQL<{
+      metaobjectUpdate: { metaobject: { id: string } | null; userErrors: { message: string }[] };
+    }>(UPDATE_MUTATION, { id: _nodeId, fields });
+    if (res.metaobjectUpdate.userErrors.length > 0) {
+      throw new Error(`Shopify save failed: ${res.metaobjectUpdate.userErrors.map((e) => e.message).join(", ")}`);
+    }
+    return;
   }
+
+  // No cached node ID — query first
+  const check = await shopifyGraphQL<{ metaobjects: { nodes: ShopifyNode[] } }>(LIST_QUERY);
+  const existing = check.metaobjects.nodes[0] ?? null;
+  if (existing) {
+    _nodeId = existing.id;
+    const res = await shopifyGraphQL<{
+      metaobjectUpdate: { metaobject: { id: string } | null; userErrors: { message: string }[] };
+    }>(UPDATE_MUTATION, { id: _nodeId, fields });
+    if (res.metaobjectUpdate.userErrors.length > 0) {
+      throw new Error(`Shopify save failed: ${res.metaobjectUpdate.userErrors.map((e) => e.message).join(", ")}`);
+    }
+    return;
+  }
+
+  // No node exists yet — try to create it
+  const res = await shopifyGraphQL<{
+    metaobjectCreate: { metaobject: { id: string } | null; userErrors: { message: string }[] };
+  }>(CREATE_MUTATION, { fields });
+
+  if (res.metaobjectCreate.metaobject?.id) {
+    _nodeId = res.metaobjectCreate.metaobject.id;
+    return;
+  }
+
+  // Metaobject type doesn't exist yet — auto-create the definition then retry.
+  // Only attempt this for type-missing errors; other errors (permissions, field
+  // validation, duplicate handle) should surface immediately.
+  if (res.metaobjectCreate.userErrors.length > 0) {
+    const isTypeMissing = res.metaobjectCreate.userErrors.some(
+      (e) => /type|definition/i.test(e.message) || e.field === "type"
+    );
+    if (!isTypeMissing) {
+      throw new Error(`Shopify save failed: ${res.metaobjectCreate.userErrors.map((e) => e.message).join(", ")}`);
+    }
+
+    let defCreated = false;
+    let defError = "";
+    try {
+      const defRes = await shopifyGraphQL<{
+        metaobjectDefinitionCreate: {
+          metaobjectDefinition: { id: string } | null;
+          userErrors: { message: string }[];
+        };
+      }>(CREATE_DEF);
+      defCreated = !!defRes.metaobjectDefinitionCreate.metaobjectDefinition?.id;
+      if (!defCreated) {
+        defError = defRes.metaobjectDefinitionCreate.userErrors.map((e) => e.message).join(", ") || "unknown error";
+      }
+    } catch (e) {
+      defError = (e as Error).message;
+    }
+
+    if (!defCreated) {
+      throw new Error(
+        `Could not auto-create the "${METAOBJECT_TYPE}" metaobject definition (${defError}). ` +
+        `Please create it manually in Shopify Admin → Settings → Custom data → Metaobjects.`
+      );
+    }
+
+    const retry = await shopifyGraphQL<{
+      metaobjectCreate: { metaobject: { id: string } | null; userErrors: { message: string }[] };
+    }>(CREATE_MUTATION, { fields });
+    if (retry.metaobjectCreate.metaobject?.id) {
+      _nodeId = retry.metaobjectCreate.metaobject.id;
+      return;
+    }
+    throw new Error(`Shopify save failed: ${retry.metaobjectCreate.userErrors.map((e) => e.message).join(", ")}`);
+  }
+}
+
+// Serialize mutations so concurrent requests don't overwrite each other
+let mutationChain: Promise<void> = Promise.resolve();
+function serialized(fn: () => Promise<void>): Promise<void> {
+  const next = mutationChain.then(fn);
+  mutationChain = next.catch(() => {});
+  return next;
+}
+
+export function saveSettings(settings: AppSettings): Promise<void> {
+  return serialized(() => persist(settings));
 }

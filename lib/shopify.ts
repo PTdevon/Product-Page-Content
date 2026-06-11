@@ -57,8 +57,8 @@ export async function shopifyGraphQL<T>(
       throw new Error(`Shopify GraphQL error: ${JSON.stringify(json.errors)}`);
     }
 
-    // Other fatal GraphQL errors (no data at all)
-    if (json.errors && !json.data) {
+    // Fatal GraphQL errors — throw whether data is present or not
+    if (json.errors) {
       throw new Error(`Shopify GraphQL error: ${JSON.stringify(json.errors)}`);
     }
 

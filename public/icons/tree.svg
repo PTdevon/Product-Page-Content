@@ -1,4 +1,4 @@
-<svg id="tree" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+﻿<svg id="tree" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
   <!-- Three stacked tiers -->
   <path d="M12 2L8.5 8H15.5Z"/>
   <path d="M12 6L7 13H17Z"/>

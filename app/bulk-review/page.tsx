@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import Nav from "@/components/Nav";
 import { Tooltip } from "@/components/Tooltip";
+import { IconImg } from "@/components/IconsProvider";
 import type { ProductSummary } from "@/lib/types";
 import { PRODUCT_TAXONOMY } from "@/data/taxonomy";
 
@@ -438,13 +439,7 @@ function RowEditor({
             return (
               <li key={i} className="flex items-center gap-2 text-sm text-gray-700 px-3 py-1.5 min-h-[2rem]">
                 {icon && (
-                  icon.startsWith("<svg") ? (
-                    <span className="w-4 h-4 shrink-0 opacity-60 [&>svg]:w-4 [&>svg]:h-4" dangerouslySetInnerHTML={{ __html: icon }} />
-                  ) : icon.startsWith("https://") ? (
-                    <img src={icon} alt="" className="w-4 h-4 shrink-0 opacity-60" />
-                  ) : (
-                    <img src={`/icons/${icon}.svg`} alt={icon} className="w-4 h-4 shrink-0 opacity-60" />
-                  )
+                  <IconImg icon={icon} size={16} className="shrink-0 opacity-60" />
                 )}
                 {bullet || <span className="text-gray-300">—</span>}
               </li>
