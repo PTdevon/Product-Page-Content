@@ -26,6 +26,14 @@ interface PasteModal {
   error: string;
 }
 
+interface RenamePrompt {
+  oldName: string;
+  newName: string;
+  products: string[];
+  phrases: string[];
+  status: "idle" | "updating" | "done";
+  updatedCounts?: { products: number; phrases: number };
+}
 
 function suggestNameFromSvg(svg: string): string {
   const matches = [...svg.matchAll(/\blucide-([a-z0-9]+(?:-[a-z0-9]+)*)/gi)];
@@ -48,6 +56,7 @@ export default function IconsPage() {
 
   const [deleteModal, setDeleteModal] = useState<DeleteModal | null>(null);
   const [pasteModal, setPasteModal] = useState<PasteModal | null>(null);
+  const [renamePrompt, setRenamePrompt] = useState<RenamePrompt | null>(null);
 
   useEffect(() => {
     fetch("/api/icons")
@@ -127,11 +136,7 @@ export default function IconsPage() {
     setSavingName(false);
 
     if (!res.ok) {
-      if (res.status === 409) {
-        setRenameError(`Cannot rename — this icon is in use by ${data.phrases?.length ? "phrases and/or " : ""}products.`);
-      } else {
-        setRenameError(data.error ?? "Rename failed");
-      }
+      setRenameError(data.error ?? "Rename failed");
       return;
     }
 
@@ -139,6 +144,37 @@ export default function IconsPage() {
       prev.map((i) => (i.handle === oldHandle ? { ...i, handle: data.name } : i))
     );
     setEditingName(null);
+
+    const usage = data.usage as { products: string[]; phrases: string[] } | undefined;
+    setRenamePrompt({
+      oldName: oldHandle,
+      newName: data.name,
+      products: usage?.products ?? [],
+      phrases: usage?.phrases ?? [],
+      status: "idle",
+    });
+  }
+
+  async function handleCascade() {
+    if (!renamePrompt) return;
+    setRenamePrompt((prev) => prev ? { ...prev, status: "updating" } : null);
+
+    const res = await fetch("/api/icons/cascade", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ oldName: renamePrompt.oldName, newName: renamePrompt.newName }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      setRenamePrompt((prev) => prev ? { ...prev, status: "idle" } : null);
+      setRenameError(data.error ?? "Update failed");
+      return;
+    }
+
+    setRenamePrompt((prev) =>
+      prev ? { ...prev, status: "done", updatedCounts: data.updated } : null
+    );
   }
 
   function handleDeleteClick(icon: IconEntry) {
@@ -438,6 +474,102 @@ export default function IconsPage() {
                     className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
                   >
                     Close
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Rename prompt modal */}
+      {renamePrompt && (
+        <div
+          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+          onClick={() => renamePrompt.status !== "updating" && setRenamePrompt(null)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {renamePrompt.status === "idle" && (
+              <>
+                <h3 className="font-semibold text-gray-900 mb-2">Icon renamed</h3>
+                {renamePrompt.products.length === 0 && renamePrompt.phrases.length === 0 ? (
+                  <>
+                    <p className="text-sm text-gray-600 mb-4">
+                      <strong>{renamePrompt.oldName}</strong> renamed to <strong>{renamePrompt.newName}</strong>. This icon isn&rsquo;t used on any products or phrases yet.
+                    </p>
+                    <div className="flex justify-end">
+                      <button
+                        onClick={() => setRenamePrompt(null)}
+                        className="px-4 py-2 text-sm text-white bg-gray-900 rounded-md hover:bg-gray-700 transition-colors"
+                      >
+                        OK
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm text-gray-600 mb-4">
+                      {[
+                        renamePrompt.products.length > 0 &&
+                          `${renamePrompt.products.length} product${renamePrompt.products.length !== 1 ? "s" : ""}`,
+                        renamePrompt.phrases.length > 0 &&
+                          `${renamePrompt.phrases.length} phrase${renamePrompt.phrases.length !== 1 ? "s" : ""}`,
+                      ]
+                        .filter(Boolean)
+                        .join(" and ")}{" "}
+                      still use the old icon name <strong>{renamePrompt.oldName}</strong>.
+                      Update {renamePrompt.products.length + renamePrompt.phrases.length === 1 ? "it" : "them"} to <strong>{renamePrompt.newName}</strong>?
+                    </p>
+                    <div className="max-h-36 overflow-y-auto border border-gray-200 rounded p-2 bg-gray-50 space-y-0.5 mb-4 text-sm text-gray-700">
+                      {renamePrompt.phrases.map((p) => <div key={p}>{p}</div>)}
+                      {renamePrompt.products.map((p) => <div key={p}>{p}</div>)}
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                      <button
+                        onClick={() => setRenamePrompt(null)}
+                        className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+                      >
+                        Skip
+                      </button>
+                      <button
+                        onClick={handleCascade}
+                        className="px-4 py-2 text-sm text-white bg-gray-900 rounded-md hover:bg-gray-700 transition-colors"
+                      >
+                        Update now
+                      </button>
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+
+            {renamePrompt.status === "updating" && (
+              <p className="text-sm text-gray-500 text-center py-4">Updating…</p>
+            )}
+
+            {renamePrompt.status === "done" && renamePrompt.updatedCounts && (
+              <>
+                <h3 className="font-semibold text-gray-900 mb-2">Done</h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  {[
+                    renamePrompt.updatedCounts.products > 0 &&
+                      `${renamePrompt.updatedCounts.products} product${renamePrompt.updatedCounts.products !== 1 ? "s" : ""}`,
+                    renamePrompt.updatedCounts.phrases > 0 &&
+                      `${renamePrompt.updatedCounts.phrases} phrase${renamePrompt.updatedCounts.phrases !== 1 ? "s" : ""}`,
+                  ]
+                    .filter(Boolean)
+                    .join(" and ")}{" "}
+                  updated to use <strong>{renamePrompt.newName}</strong>.
+                </p>
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => setRenamePrompt(null)}
+                    className="px-4 py-2 text-sm text-white bg-gray-900 rounded-md hover:bg-gray-700 transition-colors"
+                  >
+                    Done
                   </button>
                 </div>
               </>

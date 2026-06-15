@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Nav from "@/components/Nav";
 import { Tooltip } from "@/components/Tooltip";
+import AffectedProductsModal from "@/components/AffectedProductsModal";
 
 type Taxonomy = Record<string, string[]>;
 
@@ -45,6 +46,14 @@ export default function ProductTypesPage() {
   // Delete modal
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [usage, setUsage] = useState<UsageState>({ loading: false, count: null, products: null });
+
+  // Rename style cascade modal
+  const [renameTarget, setRenameTarget] = useState<{ type: string; oldStyle: string; newStyle: string } | null>(null);
+  const [renamePhase, setRenamePhase] = useState<"finding" | "found" | "updating" | "done">("finding");
+  const [renameProducts, setRenameProducts] = useState<{ id: string; title: string }[]>([]);
+  const [renameUpdateLog, setRenameUpdateLog] = useState<{ title: string; status: "updated" | "error" }[]>([]);
+  const [renameUpdateResult, setRenameUpdateResult] = useState<{ updated: number; skipped: number; failed: number } | null>(null);
+  const renameUpdatingRef = useRef(false);
 
   useEffect(() => {
     fetch("/api/taxonomy")
@@ -128,8 +137,97 @@ export default function ProductTypesPage() {
     const { type, style } = editingStyle;
     if (name === style) { setEditingStyle(null); return; }
     if (taxonomy[type].includes(name)) return;
-    persist({ ...taxonomy, [type]: taxonomy[type].map((s) => (s === style ? name : s)) });
     setEditingStyle(null);
+
+    setRenameTarget({ type, oldStyle: style, newStyle: name });
+    setRenamePhase("finding");
+    setRenameProducts([]);
+    setRenameUpdateLog([]);
+    setRenameUpdateResult(null);
+
+    fetch(`/api/taxonomy/usage?type=${encodeURIComponent(type)}&style=${encodeURIComponent(style)}`)
+      .then((r) => r.json())
+      .then((d) => {
+        const titles: string[] = d.products ?? [];
+        if (titles.length === 0) {
+          // No products — still need to update library entries silently
+          fetch("/api/taxonomy/rename-style", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ type, oldStyle: style, newStyle: name }),
+          }).catch(() => {});
+          persist({ ...taxonomy, [type]: taxonomy[type].map((s) => (s === style ? name : s)) });
+          setRenameTarget(null);
+        } else {
+          setRenameProducts(titles.map((t) => ({ id: t, title: t })));
+          setRenamePhase("found");
+        }
+      })
+      .catch(() => setRenameTarget(null));
+  }
+
+  async function handleRenameUpdate() {
+    if (!renameTarget || renameUpdatingRef.current) return;
+    renameUpdatingRef.current = true;
+    setRenamePhase("updating");
+    setRenameUpdateLog([]);
+    setRenameUpdateResult(null);
+
+    const { type, oldStyle, newStyle } = renameTarget;
+    const nextTaxonomy = { ...taxonomy, [type]: taxonomy[type].map((s) => (s === oldStyle ? newStyle : s)) };
+
+    const res = await fetch("/api/taxonomy/rename-style", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type, oldStyle, newStyle }),
+    });
+
+    if (!res.ok || !res.body) {
+      renameUpdatingRef.current = false;
+      setRenamePhase("found");
+      return;
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let receivedDone = false;
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const event = JSON.parse(line.slice(6));
+            if (event.type === "progress") {
+              setRenameUpdateLog((prev) => [...prev, { title: event.title, status: event.status }]);
+            } else if (event.type === "done") {
+              setRenameUpdateResult({ updated: event.updated, skipped: 0, failed: event.failed });
+              setRenamePhase("done");
+              receivedDone = true;
+            }
+          } catch { /* ignore */ }
+        }
+        if (receivedDone) break;
+      }
+    } catch { /* network error */ } finally { renameUpdatingRef.current = false; }
+
+    await persist(nextTaxonomy);
+    if (!receivedDone) setRenamePhase("found");
+  }
+
+  function dismissRenameModal() {
+    if (renameTarget && renamePhase === "found") {
+      // User skipped updating products — still rename in taxonomy
+      const { type, oldStyle, newStyle } = renameTarget;
+      persist({ ...taxonomy, [type]: taxonomy[type].map((s) => (s === oldStyle ? newStyle : s)) });
+    }
+    setRenameTarget(null);
   }
 
   function confirmDeleteStyle(type: string, style: string) {
@@ -390,6 +488,20 @@ export default function ProductTypesPage() {
             )}
           </div>
         </div>
+      )}
+
+      {/* Rename style cascade modal */}
+      {renameTarget && renamePhase !== "finding" && (
+        <AffectedProductsModal
+          title={`Rename style: ${renameTarget.oldStyle} → ${renameTarget.newStyle}`}
+          phase={renamePhase}
+          products={renameProducts}
+          updateLog={renameUpdateLog}
+          updateResult={renameUpdateResult}
+          canUpdate={true}
+          onUpdate={handleRenameUpdate}
+          onDismiss={dismissRenameModal}
+        />
       )}
     </div>
   );

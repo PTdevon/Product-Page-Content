@@ -61,10 +61,15 @@ async function buildApplicabilityList(): Promise<PFApplicability[]> {
   const edits = await getLibraryEdits();
   const list: PFApplicability[] = [];
 
-  // Include base rows, skipping any marked deleted
+  // Include base rows, skipping any marked deleted, applying type/style overrides
   for (const app of baseApplicability) {
-    if (edits.pfApplicability[app.id]?.deleted) continue;
-    list.push(app);
+    const edit = edits.pfApplicability[app.id];
+    if (edit?.deleted) continue;
+    if (edit && !edit.isNew) {
+      list.push({ ...app, productType: edit.productType, productStyle: edit.productStyle });
+    } else {
+      list.push(app);
+    }
   }
 
   for (const edit of Object.values(edits.pfApplicability)) {

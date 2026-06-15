@@ -37,7 +37,7 @@ export default function AffectedProductsModal({
     if (phase === "finding") return "Searching products…";
     if (phase === "found") {
       if (products.length === 0) return "No products found";
-      return `${products.length} product${products.length !== 1 ? "s" : ""} use this phrase`;
+      return `${products.length} product${products.length !== 1 ? "s" : ""} affected`;
     }
     if (phase === "updating") return "Updating products…";
     if (isDone && updateResult) {

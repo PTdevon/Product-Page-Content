@@ -1,6 +1,8 @@
 import fs from "fs/promises";
 import path from "path";
 import { shopifyGraphQL } from "./shopify";
+import wctBaseData from "@/data/why-choose-this.json";
+import pfApplicabilityBaseData from "@/data/pf-applicability.json";
 
 const TYPE = "pdp_library_edits";
 const FIELD_KEY = "edits_json";
@@ -203,9 +205,9 @@ async function persist(edits: LibraryEdits): Promise<void> {
 
 // Serialize all mutations so concurrent requests don't overwrite each other
 let mutationChain: Promise<void> = Promise.resolve();
-function serialized(fn: () => Promise<void>): Promise<void> {
+function serialized<T = void>(fn: () => Promise<T>): Promise<T> {
   const next = mutationChain.then(fn);
-  mutationChain = next.catch(() => {});
+  mutationChain = next.then(() => {}).catch(() => {});
   return next;
 }
 
@@ -280,6 +282,72 @@ export function deletePFApplicabilityEdit(id: string): Promise<void> {
     const edits = await getLibraryEdits();
     delete edits.pfApplicability[id];
     await persist(edits);
+  });
+}
+
+// ── Style rename cascade ──────────────────────────────────────────────────────
+
+export function renameStyleInLibrary(
+  productType: string,
+  oldStyle: string,
+  newStyle: string
+): Promise<{ wctUpdated: number; pfUpdated: number }> {
+  return serialized(async () => {
+    const edits = await getLibraryEdits();
+    let wctUpdated = 0;
+    let pfUpdated = 0;
+
+    // Update custom WCT entries
+    for (const entry of Object.values(edits.wct)) {
+      if (entry.productType === productType && entry.productStyle === oldStyle) {
+        entry.productStyle = newStyle;
+        wctUpdated++;
+      }
+    }
+
+    // Create overrides for base WCT entries with the old style
+    for (const base of wctBaseData as Array<{ id: string; productType: string; productStyle: string; category: string; text: string; subtext: string }>) {
+      if (base.productType === productType && base.productStyle === oldStyle) {
+        const existing = edits.wct[base.id];
+        edits.wct[base.id] = {
+          id: base.id,
+          productType,
+          productStyle: newStyle,
+          category: existing?.category ?? base.category,
+          text: existing?.text ?? base.text,
+          subtext: existing?.subtext ?? base.subtext,
+          searchFormatted: existing?.searchFormatted ?? "",
+          isNew: false,
+        };
+        wctUpdated++;
+      }
+    }
+
+    // Update custom PF applicability entries
+    for (const entry of Object.values(edits.pfApplicability)) {
+      if (entry.productType === productType && entry.productStyle === oldStyle) {
+        entry.productStyle = newStyle;
+        pfUpdated++;
+      }
+    }
+
+    // Create overrides for base PF applicability entries with the old style
+    for (const base of pfApplicabilityBaseData as Array<{ id: string; phraseId: string; productType: string; productStyle: string; applicabilityCount: number }>) {
+      if (base.productType === productType && base.productStyle === oldStyle && !edits.pfApplicability[base.id]) {
+        edits.pfApplicability[base.id] = {
+          id: base.id,
+          phraseId: base.phraseId,
+          productType,
+          productStyle: newStyle,
+          applicabilityCount: base.applicabilityCount,
+          isNew: false,
+        };
+        pfUpdated++;
+      }
+    }
+
+    if (wctUpdated > 0 || pfUpdated > 0) await persist(edits);
+    return { wctUpdated, pfUpdated };
   });
 }
 

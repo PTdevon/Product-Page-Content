@@ -170,9 +170,6 @@ export async function PATCH(req: NextRequest) {
   }
 
   const usage = await findIconUsage(oldName);
-  if (usage.products.length > 0 || usage.phrases.length > 0) {
-    return NextResponse.json({ error: "in-use", ...usage }, { status: 409 });
-  }
 
   try {
     const created = await createIcon(newName, existing.svg);
@@ -183,7 +180,7 @@ export async function PATCH(req: NextRequest) {
       try { await deleteIcon(created.id); } catch { /* best-effort */ }
       throw delErr;
     }
-    return NextResponse.json({ name: created.handle });
+    return NextResponse.json({ name: created.handle, usage });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Rename failed" },

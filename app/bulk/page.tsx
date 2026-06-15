@@ -1063,7 +1063,7 @@ export default function BulkPage() {
 
         {/* Right panel — classify or assign progress */}
         {showRightPanel && (
-          <div className={`${showContent ? "w-full" : "w-3/5"} flex flex-col bg-gray-50 overflow-hidden`}>
+          <div className={`${showContent ? "w-full" : "w-5/6 mx-auto"} flex flex-col bg-gray-50 overflow-hidden`}>
 
             {/* ── Classify panel ── */}
             {showClassify && (
@@ -1098,11 +1098,11 @@ export default function BulkPage() {
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
                       <tr>
-                        <th className="w-20 px-3 py-2"></th>
+                        <th className="w-16 shrink-0 px-3 py-2"></th>
                         <th className="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wide">Product</th>
                         <th className="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wide">Type</th>
                         <th className="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wide">Style</th>
-                        <th className="w-10 px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wide">Skip</th>
+                        <th className="w-10 shrink-0 px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wide">Skip</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -1146,7 +1146,7 @@ export default function BulkPage() {
                               <span className="text-red-500 block mt-0.5">{row.error}</span>
                             ) : row.source === "existing" && !row.dirty ? (
                               <span className="mt-0.5 inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-700">Existing</span>
-                            ) : row.source === "existing" && row.dirty ? (
+                            ) : row.dirty ? (
                               <span className="mt-0.5 inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-orange-100 text-orange-600">Edited - Unsaved</span>
                             ) : (
                               <span className="mt-0.5 inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-600">Newly Generated - Unsaved</span>
@@ -1221,13 +1221,13 @@ export default function BulkPage() {
                     {classifyHasSaved ? "Close" : "Cancel"}
                   </button>
                   <div className="flex-1" />
-                  {(classifyPhase === "review" || classifyPhase === "streaming") && (
+                  {(classifyPhase === "review" || classifyPhase === "streaming" || classifyPhase === "saving" || classifyHasSaved) && (
                     <button
                       onClick={handleSaveClassify}
-                      disabled={approvedCount === 0 || classifyPhase === "streaming"}
+                      disabled={approvedCount === 0 || classifyPhase === "streaming" || classifyPhase === "saving"}
                       className="px-4 py-2 bg-gray-900 text-white text-sm rounded disabled:opacity-40 hover:bg-gray-700 transition-colors"
                     >
-                      {approvedCount > 0 ? `Save (${approvedCount})` : "Save"}
+                      {classifyPhase === "saving" ? "Saving…" : approvedCount > 0 ? `Save (${approvedCount})` : classifyHasSaved ? "Saved" : "Save"}
                     </button>
                   )}
                 </div>
@@ -1551,7 +1551,7 @@ export default function BulkPage() {
                         disabled={saveCount === 0 || contentPhase === "saving"}
                         className="px-4 py-2 bg-gray-900 text-white text-sm rounded disabled:opacity-40 hover:bg-gray-700 transition-colors"
                       >
-                        {contentPhase === "saving" ? "Saving…" : saveCount > 0 ? `Save (${saveCount})` : "Save"}
+                        {contentPhase === "saving" ? "Saving…" : saveCount > 0 ? `Save (${saveCount})` : contentHasSaved ? "Saved" : "Save"}
                       </button>
                     )}
                   </div>

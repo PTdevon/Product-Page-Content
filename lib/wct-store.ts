@@ -9,11 +9,17 @@ export async function getWctLibrary(): Promise<WhyChooseThisEntry[]> {
   const editsMap = edits.wct;
 
   return [
-    ...base.map((e) =>
-      editsMap[e.id]
-        ? { ...e, text: editsMap[e.id].text, subtext: editsMap[e.id].subtext }
-        : e
-    ),
+    ...base.map((e) => {
+      const edit = editsMap[e.id];
+      if (!edit) return e;
+      return {
+        ...e,
+        productType: edit.productType || e.productType,
+        productStyle: edit.productStyle || e.productStyle,
+        text: edit.text,
+        subtext: edit.subtext,
+      };
+    }),
     ...Object.values(editsMap)
       .filter((e) => e.isNew)
       .map((e) => ({

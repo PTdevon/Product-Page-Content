@@ -985,7 +985,6 @@ function LibraryPageInner() {
   const [editWctTarget, setEditWctTarget] = useState<WCTRow | null | undefined>(undefined);
   const [editPfTarget, setEditPfTarget] = useState<PFPhraseRow | null | undefined>(undefined);
   const [addingNew, setAddingNew] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0);
 
   // Keep open WCT modal in sync so searchFormatted stays current after pushes
   const editWctTargetId = editWctTarget?.id;
@@ -1033,7 +1032,7 @@ function LibraryPageInner() {
       setTotal(data.total ?? 0);
     }
     setLoading(false);
-  }, [tab, productType, productStyle, category, search, refreshKey]);
+  }, [tab, productType, productStyle, category, search]);
 
   useEffect(() => {
     setCategory(""); setProductStyle(""); setWctEntries([]); setPfPhrases([]);
@@ -1100,7 +1099,7 @@ function LibraryPageInner() {
         <WCTEditModal
           entry={addingNew ? null : editWctTarget!}
           onClose={closeModal}
-          onSaved={() => setRefreshKey(k => k + 1)}
+          onSaved={() => { void fetchEntries(); }}
           taxonomy={taxonomy}
         />
       )}
@@ -1110,7 +1109,7 @@ function LibraryPageInner() {
         <PFEditModal
           entry={addingNew ? null : editPfTarget!}
           onClose={closeModal}
-          onSaved={() => setRefreshKey(k => k + 1)}
+          onSaved={() => { void fetchEntries(); }}
           taxonomy={taxonomy}
         />
       )}
