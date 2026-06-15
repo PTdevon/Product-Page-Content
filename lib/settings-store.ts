@@ -60,9 +60,43 @@ const CREATE_DEF = `
   }
 `;
 
+// Used to add interest_keywords to an existing definition that was created without it
+const GET_DEF_QUERY = `
+  query GetSettingsDef {
+    metaobjectDefinitionByType(type: "${METAOBJECT_TYPE}") {
+      id
+      fieldDefinitions { key }
+    }
+  }
+`;
+
+const ADD_IK_FIELD_MUTATION = `
+  mutation AddInterestKeywordsField($defId: ID!) {
+    metaobjectDefinitionUpdate(id: $defId, definition: {
+      fieldDefinitions: {
+        create: [{ name: "Interest Keywords", key: "interest_keywords", type: "multi_line_text_field" }]
+      }
+    }) {
+      metaobjectDefinition { id }
+      userErrors { field message }
+    }
+  }
+`;
+
 type ShopifyNode = { id: string; fields: { key: string; value: string }[] };
 
 let _nodeId: string | null = null;
+
+// Adds interest_keywords to the definition if it's missing.
+// Safe to call when the field already exists — it just returns early.
+async function ensureInterestKeywordsField(): Promise<void> {
+  const data = await shopifyGraphQL<{
+    metaobjectDefinitionByType: { id: string; fieldDefinitions: { key: string }[] } | null;
+  }>(GET_DEF_QUERY);
+  const def = data.metaobjectDefinitionByType;
+  if (!def || def.fieldDefinitions.some((f) => f.key === "interest_keywords")) return;
+  await shopifyGraphQL(ADD_IK_FIELD_MUTATION, { defId: def.id });
+}
 
 function settingsToFields(s: AppSettings) {
   return [
@@ -96,6 +130,11 @@ export async function getSettings(): Promise<AppSettings> {
     const node = data.metaobjects.nodes[0];
     if (!node) return DEFAULT_SETTINGS;
     _nodeId = node.id;
+    // If interest_keywords is absent the definition predates this field — migrate silently
+    // so the very next save will actually persist it.
+    if (!node.fields.some((f) => f.key === "interest_keywords")) {
+      await ensureInterestKeywordsField().catch(() => {});
+    }
     return fieldsToSettings(node.fields);
   } catch {
     return DEFAULT_SETTINGS;
@@ -120,6 +159,10 @@ async function persist(settings: AppSettings): Promise<void> {
   const existing = check.metaobjects.nodes[0] ?? null;
   if (existing) {
     _nodeId = existing.id;
+    // Migrate the definition if interest_keywords field is missing (silently, best-effort)
+    if (!existing.fields.some((f) => f.key === "interest_keywords")) {
+      await ensureInterestKeywordsField().catch(() => {});
+    }
     const res = await shopifyGraphQL<{
       metaobjectUpdate: { metaobject: { id: string } | null; userErrors: { message: string }[] };
     }>(UPDATE_MUTATION, { id: _nodeId, fields });
