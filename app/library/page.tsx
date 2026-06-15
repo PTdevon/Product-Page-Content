@@ -593,7 +593,6 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
         return;
       }
       onSaved();
-      handleFind();
     }
   }
 

@@ -14,16 +14,21 @@ export function IconsProvider({ children }: { children: ReactNode }) {
   const [iconMap, setIconMap] = useState<Map<string, string>>(new Map());
 
   useEffect(() => {
-    fetch("/api/icons")
-      .then((r) => r.json())
-      .then((d: { icons?: IconEntry[] }) => {
-        if (d.icons) {
-          const map = new Map<string, string>();
-          for (const icon of d.icons) map.set(icon.handle, icon.svg);
-          setIconMap(map);
-        }
-      })
-      .catch(() => {});
+    function load() {
+      fetch("/api/icons")
+        .then((r) => r.json())
+        .then((d: { icons?: IconEntry[] }) => {
+          if (d.icons) {
+            const map = new Map<string, string>();
+            for (const icon of d.icons) map.set(icon.handle, icon.svg);
+            setIconMap(map);
+          }
+        })
+        .catch(() => {});
+    }
+    load();
+    window.addEventListener("pdp:icons-changed", load);
+    return () => window.removeEventListener("pdp:icons-changed", load);
   }, []);
 
   return <IconsContext.Provider value={iconMap}>{children}</IconsContext.Provider>;

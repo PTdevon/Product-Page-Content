@@ -94,6 +94,7 @@ export default function IconsPage() {
 
     setIcons((prev) => [...prev, data as IconEntry]);
     setPasteModal(null);
+    window.dispatchEvent(new CustomEvent("pdp:icons-changed"));
   }
 
   function startEdit(name: string) {
