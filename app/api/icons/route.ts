@@ -67,6 +67,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const icons = await getAllIcons();
+    icons.sort((a, b) => a.handle.localeCompare(b.handle));
     return NextResponse.json({ icons });
   } catch (e) {
     console.error("[GET /api/icons]", e);
