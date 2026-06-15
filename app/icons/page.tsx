@@ -51,22 +51,14 @@ export default function IconsPage() {
 
   useEffect(() => {
     fetch("/api/icons")
-      .then(async (r) => {
-        const text = await r.text();
-        let d: Record<string, unknown>;
-        try {
-          d = JSON.parse(text);
-        } catch {
-          setLoadError(`HTTP ${r.status}: ${text.slice(0, 200)}`);
-          setLoadingIcons(false);
-          return;
-        }
-        if (d.error) setLoadError(d.error as string);
-        setIcons((d.icons ?? []) as IconEntry[]);
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.error) setLoadError(d.error);
+        setIcons(d.icons ?? []);
         setLoadingIcons(false);
       })
-      .catch((err: unknown) => {
-        setLoadError(`Fetch failed: ${err instanceof Error ? err.message : String(err)}`);
+      .catch(() => {
+        setLoadError("Could not reach the icons API.");
         setLoadingIcons(false);
       });
   }, []);

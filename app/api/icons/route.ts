@@ -3,18 +3,31 @@ import { requireAuth } from "@/lib/auth";
 import { getAllIcons, getIcon, createIcon, deleteIcon } from "@/lib/icon-metaobjects-store";
 import { findIconUsage } from "@/lib/icon-usage";
 import { minifySvg } from "@/lib/icons";
-import createDOMPurify from "dompurify";
-import { JSDOM } from "jsdom";
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const DOMPurify = createDOMPurify(new JSDOM("").window as any);
 
 export const dynamic = "force-dynamic";
 
+// Server-side SVG sanitizer — no DOM/jsdom dependency needed.
+function serverSanitizeSvg(raw: string): string | null {
+  if (!raw.includes("<svg")) return null;
+  let s = raw;
+  // Strip script tags and content
+  s = s.replace(/<script[\s\S]*?<\/script>/gi, "");
+  // Strip dangerous elements (self-closing or paired)
+  for (const tag of ["iframe", "object", "embed", "form", "input", "base", "meta", "link"]) {
+    s = s.replace(new RegExp(`<${tag}[\\s\\S]*?<\\/${tag}>`, "gi"), "");
+    s = s.replace(new RegExp(`<${tag}[^>]*/?>`, "gi"), "");
+  }
+  // Strip on* event handlers
+  s = s.replace(/\s+on\w+\s*=\s*"[^"]*"/gi, "");
+  s = s.replace(/\s+on\w+\s*=\s*'[^']*'/gi, "");
+  // Strip javascript: URLs
+  s = s.replace(/(href|src|xlink:href)\s*=\s*["']\s*javascript:[^"']*["']/gi, "");
+  if (!s.includes("<svg")) return null;
+  return s;
+}
+
 function cleanIconSvg(raw: string, name: string): string | null {
-  const sanitized = DOMPurify.sanitize(raw, {
-    USE_PROFILES: { svg: true, svgFilters: true },
-  });
+  const sanitized = serverSanitizeSvg(raw);
   if (!sanitized) return null;
 
   let svg = sanitized;

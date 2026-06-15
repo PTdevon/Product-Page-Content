@@ -1,7 +1,6 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["jsdom"],
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "cdn.shopify.com" },
