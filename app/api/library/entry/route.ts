@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import {
-  upsertWCTEdit, deleteWCTEdit, getLibraryEdits,
+  upsertWCTEdit, upsertWCTEdits, deleteWCTEdit, getLibraryEdits,
   type WCTEdit,
 } from "@/lib/library-edits-store";
 import {
@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json() as {
     type: "wct" | "pf";
-    entry: Partial<WCTEdit> & {
+    entry: (Partial<WCTEdit> & {
       id?: string;
       // PF phrase fields
       phrase?: string;
@@ -33,11 +33,26 @@ export async function POST(req: NextRequest) {
       phraseId?: string;
       productType?: string;
       productStyle?: string;
-    };
+    }) | (Partial<WCTEdit> & { id?: string })[];
   };
 
   try {
     if (body.type === "wct") {
+      if (Array.isArray(body.entry)) {
+        // Batch create — single read-modify-write so entries can't be lost to a
+        // lost-update race across concurrent/cross-instance requests.
+        const prepared: WCTEdit[] = [];
+        for (const raw of body.entry) {
+          const { id, productType, productStyle, category, text, subtext } = raw as WCTEdit;
+          if (!category) return NextResponse.json({ error: "category is required" }, { status: 400 });
+          const isNew = !id || id.startsWith("wct-custom-");
+          const entryId = id || `wct-custom-${Date.now()}-${prepared.length}`;
+          prepared.push({ id: entryId, productType: productType!, productStyle: productStyle!, category: category!, text: text!, subtext: subtext!, searchFormatted: "", isNew: !!isNew });
+        }
+        await upsertWCTEdits(prepared);
+        return NextResponse.json({ ok: true, ids: prepared.map((e) => e.id) });
+      }
+
       const { id, productType, productStyle, category, text, subtext } = body.entry as WCTEdit;
 
       if (!category) return NextResponse.json({ error: "category is required" }, { status: 400 });
@@ -58,7 +73,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (body.type === "pf") {
-      const { id, phrase, icon, category, timeSensitive, filterByInterest, minPrice, maxPrice, searchPhrase, phraseId, productType, productStyle, typeStylePairs } = body.entry;
+      const { id, phrase, icon, category, timeSensitive, filterByInterest, minPrice, maxPrice, searchPhrase, phraseId, productType, productStyle, typeStylePairs } = body.entry as Exclude<typeof body.entry, unknown[]>;
 
       if (!id && !phraseId) {
         // ── CREATE NEW PHRASE + applicabilities ───────────────────────────────

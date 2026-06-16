@@ -79,25 +79,22 @@ function WCTEditModal({ entry, onClose, onSaved, taxonomy }: WCTEditModalProps) 
         setSaving(false);
         return false;
       }
-      const results = await Promise.all(WCT_CATEGORIES.map((cat) =>
-        fetch("/api/library/entry", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type: "wct",
-            entry: {
-              productType,
-              productStyle,
-              category: cat,
-              text: entries[cat].text.trim(),
-              subtext: entries[cat].subtext.trim(),
-              searchFormatted: "",
-            },
-          }),
-        })
-      ));
-      const failed = results.find((r) => !r.ok);
-      if (failed) {
+      const res = await fetch("/api/library/entry", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "wct",
+          entry: WCT_CATEGORIES.map((cat) => ({
+            productType,
+            productStyle,
+            category: cat,
+            text: entries[cat].text.trim(),
+            subtext: entries[cat].subtext.trim(),
+            searchFormatted: "",
+          })),
+        }),
+      });
+      if (!res.ok) {
         setSaveError("Save failed — some entries may not have been created");
         setSaving(false);
         return false;
@@ -315,6 +312,7 @@ function WCTEditModal({ entry, onClose, onSaved, taxonomy }: WCTEditModalProps) 
       {findPhase !== "idle" && (
         <AffectedProductsModal
           title="Products using this entry"
+          subject="entry"
           phase={findPhase}
           products={foundProducts}
           updateLog={updateLog}
@@ -1144,6 +1142,7 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
       {findPhase !== "idle" && (
         <AffectedProductsModal
           title="Products using this phrase"
+          subject="phrase"
           phase={findPhase}
           products={foundProducts}
           updateLog={updateLog}

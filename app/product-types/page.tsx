@@ -701,6 +701,7 @@ export default function ProductTypesPage() {
       {renameTarget && renamePhase !== "finding" && (
         <AffectedProductsModal
           title={`Rename style: ${renameTarget.oldStyle} → ${renameTarget.newStyle}`}
+          subject="style"
           phase={renamePhase}
           products={renameProducts}
           updateLog={renameUpdateLog}
@@ -723,6 +724,7 @@ export default function ProductTypesPage() {
       {typeRenameTarget && typeRenamePhase !== "finding" && (
         <AffectedProductsModal
           title={`Rename type: ${typeRenameTarget.oldType} → ${typeRenameTarget.newType}`}
+          subject="type"
           phase={typeRenamePhase}
           products={typeRenameProducts}
           updateLog={typeRenameUpdateLog}

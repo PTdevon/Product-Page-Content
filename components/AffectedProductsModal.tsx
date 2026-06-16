@@ -5,6 +5,8 @@ import { Tooltip } from "@/components/Tooltip";
 
 interface AffectedProductsModalProps {
   title: string;
+  /** What the affected products have in common, e.g. "style", "type", "entry", "phrase" — used to phrase the header. */
+  subject?: string;
   phase: "finding" | "found" | "updating" | "done";
   products: { id: string; title: string }[];
   updateLog: { title: string; status: "updated" | "error" }[];
@@ -20,6 +22,7 @@ interface AffectedProductsModalProps {
 
 export default function AffectedProductsModal({
   title,
+  subject,
   phase,
   products,
   updateLog,
@@ -56,8 +59,11 @@ export default function AffectedProductsModal({
   function headerText() {
     if (phase === "finding") return "Searching products…";
     if (phase === "found") {
-      if (products.length === 0) return "No products found";
-      return `${products.length} product${products.length !== 1 ? "s" : ""} affected`;
+      if (products.length === 0) return subject ? `No products use this ${subject}` : "No products found";
+      const n = products.length;
+      const noun = `Product${n !== 1 ? "s" : ""}`;
+      if (!subject) return `${n} ${noun} affected`;
+      return `${n} ${noun} use${n === 1 ? "s" : ""} this ${subject}`;
     }
     if (phase === "updating") return "Updating products…";
     if (busy) return "Working…";
@@ -162,7 +168,7 @@ export default function AffectedProductsModal({
                     onClick={onDismiss}
                     className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded hover:bg-gray-50 transition-colors"
                   >
-                    Skip
+                    Do Not Update Products
                   </button>
                 </Tooltip>
                 <Tooltip content="Push this change to all listed products, then commit it." side="top">
@@ -170,7 +176,7 @@ export default function AffectedProductsModal({
                     onClick={onUpdate}
                     className="px-4 py-2 text-sm bg-gray-900 text-white rounded hover:bg-gray-700 transition-colors"
                   >
-                    Continue ({products.length})
+                    Update Products
                   </button>
                 </Tooltip>
               </>

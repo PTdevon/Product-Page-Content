@@ -228,6 +228,17 @@ export function upsertWCTEdit(entry: WCTEdit): Promise<void> {
   });
 }
 
+// Upsert multiple entries in a single read-modify-write so a batch create
+// (e.g. all 4 WCT categories for a new type/style) can't be split across
+// concurrent requests and lose entries to a lost-update race.
+export function upsertWCTEdits(entries: WCTEdit[]): Promise<void> {
+  return serialized(async () => {
+    const edits = await getLibraryEdits();
+    for (const entry of entries) edits.wct[entry.id] = entry;
+    await persist(edits);
+  });
+}
+
 export function deleteWCTEdit(id: string): Promise<void> {
   return serialized(async () => {
     const edits = await getLibraryEdits();
