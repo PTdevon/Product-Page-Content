@@ -18,6 +18,9 @@ interface AffectedProductsModalProps {
   onRevert?: () => void;
   busy?: boolean;
   notCommittedMessage?: string;
+  /** True if the library (Why Choose This / Perfect For) entries failed to update — distinct from product failures. */
+  libraryFailed?: boolean;
+  onRetryLibrary?: () => void;
 }
 
 export default function AffectedProductsModal({
@@ -34,6 +37,8 @@ export default function AffectedProductsModal({
   onRevert,
   busy,
   notCommittedMessage,
+  libraryFailed,
+  onRetryLibrary,
 }: AffectedProductsModalProps) {
   const logRef = useRef<HTMLDivElement>(null);
 
@@ -45,12 +50,14 @@ export default function AffectedProductsModal({
   const isDone = phase === "done";
   const hasFailures = isDone && !!updateResult && updateResult.failed > 0;
   const canRetryOrRevert = hasFailures && (onRetry || onRevert);
+  const hasLibraryFailure = isDone && !!libraryFailed;
 
   function handleDismiss() {
-    if (canRetryOrRevert) {
-      const ok = window.confirm(
-        `${updateResult!.failed} product${updateResult!.failed !== 1 ? "s" : ""} ${updateResult!.failed !== 1 ? "are" : "is"} still left in a partially-applied state and won't be retried or reverted. Close anyway?`
-      );
+    if (canRetryOrRevert || hasLibraryFailure) {
+      const parts = [];
+      if (canRetryOrRevert) parts.push(`${updateResult!.failed} product${updateResult!.failed !== 1 ? "s" : ""} still ${updateResult!.failed !== 1 ? "are" : "is"} left in a partially-applied state`);
+      if (hasLibraryFailure) parts.push("the library entries were not updated");
+      const ok = window.confirm(`${parts.join(" and ")} and won't be retried. Close anyway?`);
       if (!ok) return;
     }
     onDismiss();
@@ -115,12 +122,17 @@ export default function AffectedProductsModal({
               {notCommittedMessage ?? `Not fully applied — ${updateResult!.failed} still need updating.`}
             </div>
           )}
+          {hasLibraryFailure && (
+            <div className="text-red-600 pt-1.5 font-medium">
+              Library entries (Why Choose This / Perfect For) failed to update — products were updated but the library is now out of sync.
+            </div>
+          )}
         </div>
 
         {/* Footer */}
         {(phase === "found" || isDone) && (
           <div className="px-5 py-3.5 border-t border-gray-100 flex items-center justify-end gap-3">
-            {isDone && !canRetryOrRevert && (
+            {isDone && !canRetryOrRevert && !hasLibraryFailure && (
               <button
                 onClick={onDismiss}
                 className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded hover:bg-gray-50 transition-colors"
@@ -128,7 +140,7 @@ export default function AffectedProductsModal({
                 Close
               </button>
             )}
-            {canRetryOrRevert && (
+            {isDone && (canRetryOrRevert || hasLibraryFailure) && (
               <>
                 <button
                   onClick={handleDismiss}
@@ -137,7 +149,7 @@ export default function AffectedProductsModal({
                 >
                   Close
                 </button>
-                {onRevert && (
+                {canRetryOrRevert && onRevert && (
                   <Tooltip content="Undo the products that already updated and abandon this change." side="top">
                     <button
                       onClick={onRevert}
@@ -148,7 +160,7 @@ export default function AffectedProductsModal({
                     </button>
                   </Tooltip>
                 )}
-                {onRetry && (
+                {canRetryOrRevert && onRetry && (
                   <Tooltip content="Retry only the products that failed to update." side="top">
                     <button
                       onClick={onRetry}
@@ -156,6 +168,17 @@ export default function AffectedProductsModal({
                       className="px-4 py-2 text-sm bg-gray-900 text-white rounded hover:bg-gray-700 disabled:opacity-40 transition-colors"
                     >
                       Retry failed ({updateResult!.failed})
+                    </button>
+                  </Tooltip>
+                )}
+                {hasLibraryFailure && onRetryLibrary && (
+                  <Tooltip content="Retry updating the matching Why Choose This / Perfect For library entries." side="top">
+                    <button
+                      onClick={onRetryLibrary}
+                      disabled={busy}
+                      className="px-4 py-2 text-sm bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-40 transition-colors"
+                    >
+                      Retry library update
                     </button>
                   </Tooltip>
                 )}

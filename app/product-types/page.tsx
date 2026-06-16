@@ -58,6 +58,7 @@ export default function ProductTypesPage() {
   const [renameFailedIds, setRenameFailedIds] = useState<{ id: string; title: string }[]>([]);
   const [renameReverting, setRenameReverting] = useState(false);
   const [renameBusy, setRenameBusy] = useState(false);
+  const [renameLibraryFailed, setRenameLibraryFailed] = useState(false);
   const renameUpdatingRef = useRef(false);
 
   // Rename type cascade modal
@@ -70,6 +71,7 @@ export default function ProductTypesPage() {
   const [typeRenameFailedIds, setTypeRenameFailedIds] = useState<{ id: string; title: string }[]>([]);
   const [typeRenameReverting, setTypeRenameReverting] = useState(false);
   const [typeRenameBusy, setTypeRenameBusy] = useState(false);
+  const [typeRenameLibraryFailed, setTypeRenameLibraryFailed] = useState(false);
   const typeRenameUpdatingRef = useRef(false);
 
   useEffect(() => {
@@ -136,14 +138,17 @@ export default function ProductTypesPage() {
       .then((d) => {
         const titles: string[] = d.products ?? [];
         if (titles.length === 0) {
-          // No products — still need to update library entries silently
-          fetch("/api/taxonomy/rename-type", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ oldType, newType: name }),
-          }).catch(() => {});
-          persist(renamedTaxonomyKey(oldType, name));
-          setTypeRenameTarget(null);
+          // No products affected — still need to update the library entries
+          runCascadeStream("/api/taxonomy/rename-type", { oldType, newType: name, onlyLibrary: true }, () => {})
+            .then(({ libraryFailed }) => {
+              if (libraryFailed) {
+                setSaveError(`Renamed "${oldType}" → "${name}", but updating the matching library entries failed. Edit the type name again to retry.`);
+                setTypeRenameTarget(null);
+                return;
+              }
+              persist(renamedTaxonomyKey(oldType, name));
+              setTypeRenameTarget(null);
+            });
         } else {
           setTypeRenameProducts(titles.map((t) => ({ id: t, title: t })));
           setTypeRenamePhase("found");
@@ -203,14 +208,17 @@ export default function ProductTypesPage() {
       .then((d) => {
         const titles: string[] = d.products ?? [];
         if (titles.length === 0) {
-          // No products — still need to update library entries silently
-          fetch("/api/taxonomy/rename-style", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ type, oldStyle: style, newStyle: name }),
-          }).catch(() => {});
-          persist({ ...taxonomy, [type]: taxonomy[type].map((s) => (s === style ? name : s)) });
-          setRenameTarget(null);
+          // No products affected — still need to update the library entries
+          runCascadeStream("/api/taxonomy/rename-style", { type, oldStyle: style, newStyle: name, onlyLibrary: true }, () => {})
+            .then(({ libraryFailed }) => {
+              if (libraryFailed) {
+                setSaveError(`Renamed "${style}" → "${name}", but updating the matching library entries failed. Edit the style name again to retry.`);
+                setRenameTarget(null);
+                return;
+              }
+              persist({ ...taxonomy, [type]: taxonomy[type].map((s) => (s === style ? name : s)) });
+              setRenameTarget(null);
+            });
         } else {
           setRenameProducts(titles.map((t) => ({ id: t, title: t })));
           setRenamePhase("found");
@@ -222,7 +230,7 @@ export default function ProductTypesPage() {
   function runRenameCascade(
     body: Record<string, unknown>,
     onProgress: (ev: CascadeProgressEvent) => void
-  ): Promise<{ failed: number; receivedDone: boolean }> {
+  ): Promise<{ failed: number; receivedDone: boolean; libraryFailed: boolean }> {
     return runCascadeStream("/api/taxonomy/rename-style", body, onProgress);
   }
 
@@ -233,12 +241,13 @@ export default function ProductTypesPage() {
     setRenameUpdateLog([]);
     setRenameUpdateResult(null);
     setRenameReverting(false);
+    setRenameLibraryFailed(false);
 
     const { type, oldStyle, newStyle } = renameTarget;
     const updatedIds: { id: string; title: string }[] = [];
     const failedIds: { id: string; title: string }[] = [];
 
-    const { receivedDone } = await runRenameCascade({ type, oldStyle, newStyle }, (ev) => {
+    const { receivedDone, libraryFailed } = await runRenameCascade({ type, oldStyle, newStyle }, (ev) => {
       setRenameUpdateLog((prev) => [...prev, { title: ev.title, status: ev.status }]);
       if (!ev.id) return;
       (ev.status === "updated" ? updatedIds : failedIds).push({ id: ev.id, title: ev.title });
@@ -248,12 +257,22 @@ export default function ProductTypesPage() {
     setRenameUpdatedIds(updatedIds);
     setRenameFailedIds(failedIds);
     setRenameUpdateResult({ updated: updatedIds.length, skipped: 0, failed: failedIds.length });
+    setRenameLibraryFailed(libraryFailed);
 
     if (!receivedDone) { setRenamePhase("found"); return; }
     setRenamePhase("done");
     if (failedIds.length === 0) {
       await persist({ ...taxonomy, [type]: taxonomy[type].map((s) => (s === oldStyle ? newStyle : s)) });
     }
+  }
+
+  async function retryRenameLibrary() {
+    if (!renameTarget || renameBusy) return;
+    setRenameBusy(true);
+    const { type, oldStyle, newStyle } = renameTarget;
+    const { libraryFailed } = await runRenameCascade({ type, oldStyle, newStyle, onlyLibrary: true }, () => {});
+    setRenameLibraryFailed(libraryFailed);
+    setRenameBusy(false);
   }
 
   async function retryRenameUpdate() {
@@ -302,7 +321,7 @@ export default function ProductTypesPage() {
     const newUpdated: { id: string; title: string }[] = [];
     const stillFailed: { id: string; title: string }[] = [];
 
-    await runRenameCascade(
+    const { libraryFailed } = await runRenameCascade(
       { type, oldStyle: newStyle, newStyle: oldStyle, retryIds: renameUpdatedIds.map((p) => p.id), skipLibrary: false },
       (ev) => {
         setRenameUpdateLog((prev) => [...prev, { title: ev.title, status: ev.status }]);
@@ -314,9 +333,10 @@ export default function ProductTypesPage() {
     setRenameUpdatedIds(stillFailed);
     setRenameFailedIds(stillFailed);
     setRenameUpdateResult({ updated: newUpdated.length, skipped: 0, failed: stillFailed.length });
+    setRenameLibraryFailed(libraryFailed);
     setRenameBusy(false);
 
-    if (stillFailed.length === 0) setRenameTarget(null);
+    if (stillFailed.length === 0 && !libraryFailed) setRenameTarget(null);
   }
 
   function dismissRenameModal() {
@@ -331,7 +351,7 @@ export default function ProductTypesPage() {
   function runTypeRenameCascade(
     body: Record<string, unknown>,
     onProgress: (ev: CascadeProgressEvent) => void
-  ): Promise<{ failed: number; receivedDone: boolean }> {
+  ): Promise<{ failed: number; receivedDone: boolean; libraryFailed: boolean }> {
     return runCascadeStream("/api/taxonomy/rename-type", body, onProgress);
   }
 
@@ -342,12 +362,13 @@ export default function ProductTypesPage() {
     setTypeRenameUpdateLog([]);
     setTypeRenameUpdateResult(null);
     setTypeRenameReverting(false);
+    setTypeRenameLibraryFailed(false);
 
     const { oldType, newType } = typeRenameTarget;
     const updatedIds: { id: string; title: string }[] = [];
     const failedIds: { id: string; title: string }[] = [];
 
-    const { receivedDone } = await runTypeRenameCascade({ oldType, newType }, (ev) => {
+    const { receivedDone, libraryFailed } = await runTypeRenameCascade({ oldType, newType }, (ev) => {
       setTypeRenameUpdateLog((prev) => [...prev, { title: ev.title, status: ev.status }]);
       if (!ev.id) return;
       (ev.status === "updated" ? updatedIds : failedIds).push({ id: ev.id, title: ev.title });
@@ -357,12 +378,22 @@ export default function ProductTypesPage() {
     setTypeRenameUpdatedIds(updatedIds);
     setTypeRenameFailedIds(failedIds);
     setTypeRenameUpdateResult({ updated: updatedIds.length, skipped: 0, failed: failedIds.length });
+    setTypeRenameLibraryFailed(libraryFailed);
 
     if (!receivedDone) { setTypeRenamePhase("found"); return; }
     setTypeRenamePhase("done");
     if (failedIds.length === 0) {
       await persist(renamedTaxonomyKey(oldType, newType));
     }
+  }
+
+  async function retryTypeRenameLibrary() {
+    if (!typeRenameTarget || typeRenameBusy) return;
+    setTypeRenameBusy(true);
+    const { oldType, newType } = typeRenameTarget;
+    const { libraryFailed } = await runTypeRenameCascade({ oldType, newType, onlyLibrary: true }, () => {});
+    setTypeRenameLibraryFailed(libraryFailed);
+    setTypeRenameBusy(false);
   }
 
   async function retryTypeRenameUpdate() {
@@ -411,7 +442,7 @@ export default function ProductTypesPage() {
     const newUpdated: { id: string; title: string }[] = [];
     const stillFailed: { id: string; title: string }[] = [];
 
-    await runTypeRenameCascade(
+    const { libraryFailed } = await runTypeRenameCascade(
       { oldType: newType, newType: oldType, retryIds: typeRenameUpdatedIds.map((p) => p.id), skipLibrary: false },
       (ev) => {
         setTypeRenameUpdateLog((prev) => [...prev, { title: ev.title, status: ev.status }]);
@@ -423,9 +454,10 @@ export default function ProductTypesPage() {
     setTypeRenameUpdatedIds(stillFailed);
     setTypeRenameFailedIds(stillFailed);
     setTypeRenameUpdateResult({ updated: newUpdated.length, skipped: 0, failed: stillFailed.length });
+    setTypeRenameLibraryFailed(libraryFailed);
     setTypeRenameBusy(false);
 
-    if (stillFailed.length === 0) setTypeRenameTarget(null);
+    if (stillFailed.length === 0 && !libraryFailed) setTypeRenameTarget(null);
   }
 
   function dismissTypeRenameModal() {
@@ -711,6 +743,8 @@ export default function ProductTypesPage() {
           onDismiss={dismissRenameModal}
           onRetry={renameFailedIds.length > 0 ? retryRenameUpdate : undefined}
           onRevert={!renameReverting && renameUpdatedIds.length > 0 ? cancelAndRevertRenameUpdate : undefined}
+          libraryFailed={renameLibraryFailed}
+          onRetryLibrary={retryRenameLibrary}
           busy={renameBusy}
           notCommittedMessage={
             renameReverting
@@ -734,6 +768,8 @@ export default function ProductTypesPage() {
           onDismiss={dismissTypeRenameModal}
           onRetry={typeRenameFailedIds.length > 0 ? retryTypeRenameUpdate : undefined}
           onRevert={!typeRenameReverting && typeRenameUpdatedIds.length > 0 ? cancelAndRevertTypeRenameUpdate : undefined}
+          libraryFailed={typeRenameLibraryFailed}
+          onRetryLibrary={retryTypeRenameLibrary}
           busy={typeRenameBusy}
           notCommittedMessage={
             typeRenameReverting

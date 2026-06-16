@@ -43,12 +43,13 @@ export async function POST(req: NextRequest) {
   const authError = await requireAuth(req);
   if (authError) return authError;
 
-  const { type, oldStyle, newStyle, retryIds, skipLibrary } = await req.json() as {
+  const { type, oldStyle, newStyle, retryIds, skipLibrary, onlyLibrary } = await req.json() as {
     type: string;
     oldStyle: string;
     newStyle: string;
     retryIds?: string[];
     skipLibrary?: boolean;
+    onlyLibrary?: boolean;
   };
   if (!oldStyle || !newStyle) {
     return new Response(JSON.stringify({ error: "oldStyle and newStyle are required" }), { status: 400 });
@@ -61,6 +62,24 @@ export async function POST(req: NextRequest) {
       const send = (data: object) => {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
       };
+
+      // Retry-only mode: re-run just the library cascade (used when the product
+      // update already succeeded but the library write failed and was retried later).
+      if (onlyLibrary) {
+        try {
+          const { wctUpdated, pfUpdated } = await renameStyleInLibrary(type, oldStyle, newStyle);
+          const parts = [];
+          if (wctUpdated > 0) parts.push(`${wctUpdated} Why Choose This`);
+          if (pfUpdated > 0) parts.push(`${pfUpdated} Perfect For`);
+          send({ type: "progress", title: parts.length ? `Library updated (${parts.join(", ")})` : "Library update (nothing to change)", status: "updated" });
+          send({ type: "done", updated: 0, skipped: 0, failed: 0, libraryFailed: false });
+        } catch (err) {
+          send({ type: "progress", title: "Library update failed", status: "error" });
+          send({ type: "done", updated: 0, skipped: 0, failed: 0, libraryFailed: true, libraryError: err instanceof Error ? err.message : "Unknown error" });
+        }
+        controller.close();
+        return;
+      }
 
       // Collect affected products
       const targets: { id: string; title: string; currentStyle: string }[] = [];
@@ -97,18 +116,27 @@ export async function POST(req: NextRequest) {
         return;
       }
 
-      // Update library entries first
+      // Update library entries first — retry a couple of times before giving up, since
+      // this write can lose a race with another concurrent edit to the same metaobject.
+      let libraryFailed = false;
       if (!skipLibrary) {
-        try {
-          const { wctUpdated, pfUpdated } = await renameStyleInLibrary(type, oldStyle, newStyle);
-          if (wctUpdated > 0 || pfUpdated > 0) {
-            const parts = [];
-            if (wctUpdated > 0) parts.push(`${wctUpdated} Why Choose This`);
-            if (pfUpdated > 0) parts.push(`${pfUpdated} Perfect For`);
-            send({ type: "progress", title: `Library updated (${parts.join(", ")})`, status: "updated" });
+        const MAX_ATTEMPTS = 3;
+        for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+          try {
+            const { wctUpdated, pfUpdated } = await renameStyleInLibrary(type, oldStyle, newStyle);
+            if (wctUpdated > 0 || pfUpdated > 0) {
+              const parts = [];
+              if (wctUpdated > 0) parts.push(`${wctUpdated} Why Choose This`);
+              if (pfUpdated > 0) parts.push(`${pfUpdated} Perfect For`);
+              send({ type: "progress", title: `Library updated (${parts.join(", ")})`, status: "updated" });
+            }
+            libraryFailed = false;
+            break;
+          } catch {
+            libraryFailed = true;
+            if (attempt < MAX_ATTEMPTS) continue;
+            send({ type: "progress", title: "Library update failed", status: "error" });
           }
-        } catch {
-          send({ type: "progress", title: "Library update failed", status: "error" });
         }
       }
 
@@ -131,7 +159,7 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      send({ type: "done", updated, skipped: 0, failed });
+      send({ type: "done", updated, skipped: 0, failed, libraryFailed });
       controller.close();
     },
   });

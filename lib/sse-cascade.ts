@@ -22,19 +22,20 @@ export async function runCascadeStream(
   endpoint: string,
   body: Record<string, unknown>,
   onProgress: (ev: CascadeProgressEvent) => void
-): Promise<{ failed: number; receivedDone: boolean }> {
+): Promise<{ failed: number; receivedDone: boolean; libraryFailed: boolean }> {
   const res = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok || !res.body) return { failed: 0, receivedDone: false };
+  if (!res.ok || !res.body) return { failed: 0, receivedDone: false, libraryFailed: false };
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
   let receivedDone = false;
   let failed = 0;
+  let libraryFailed = false;
 
   try {
     while (true) {
@@ -51,6 +52,7 @@ export async function runCascadeStream(
             onProgress(event);
           } else if (event.type === "done") {
             failed = event.failed;
+            libraryFailed = !!event.libraryFailed;
             receivedDone = true;
           }
         } catch { /* ignore malformed line */ }
@@ -59,5 +61,5 @@ export async function runCascadeStream(
     }
   } catch { /* network error */ }
 
-  return { failed, receivedDone };
+  return { failed, receivedDone, libraryFailed };
 }
