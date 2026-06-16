@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { shopifyGraphQL } from "@/lib/shopify";
 import { classifyStatus, contentStatus, matchesFilter } from "@/lib/product-filters";
+import { getHiddenProductIds } from "@/lib/hidden-products";
 
 const COUNT_PRODUCTS = `
   query CountProducts($first: Int!, $after: String, $query: String) {
     products(first: $first, after: $after, query: $query) {
       edges {
         node {
+          id
           tags
           productTypePt: metafield(namespace: "product", key: "product_type") { value }
           productStylePt: metafield(namespace: "product", key: "product_style") { value }
@@ -27,7 +29,7 @@ const COUNT_PRODUCTS = `
 `;
 
 type MF = { value: string } | null;
-type RawNode = { tags: string[]; productTypePt: MF; productStylePt: MF; humanReviewed: MF; productSummary: MF; wctBullet1: MF; pfBullet1: MF; seasonalMdPhrase: MF; seasonalFdPhrase: MF; seasonalVdPhrase: MF };
+type RawNode = { id: string; tags: string[]; productTypePt: MF; productStylePt: MF; humanReviewed: MF; productSummary: MF; wctBullet1: MF; pfBullet1: MF; seasonalMdPhrase: MF; seasonalFdPhrase: MF; seasonalVdPhrase: MF };
 type CountResult = { products: { edges: { node: RawNode; cursor: string }[]; pageInfo: { hasNextPage: boolean } } };
 
 export async function GET(req: NextRequest) {
@@ -57,12 +59,14 @@ export async function GET(req: NextRequest) {
   let iterations = 0;
 
   try {
+    const hiddenProductIds = await getHiddenProductIds();
     while (hasMore && iterations < MAX_ITERATIONS) {
       iterations++;
       const data: CountResult = await shopifyGraphQL<CountResult>(COUNT_PRODUCTS, { first: 250, after: cursor, query });
 
       for (const edge of data.products.edges) {
         if (edge.node.tags.includes("hidden")) continue;
+        if (hiddenProductIds.has(edge.node.id)) continue;
         const isChristmas = edge.node.tags.some((t: string) => t.toLowerCase() === "christmas");
         if (christmas !== isChristmas) continue;
         const cs        = classifyStatus(edge.node);

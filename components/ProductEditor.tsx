@@ -368,7 +368,7 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
     return <div className="p-8 text-red-500 text-sm">{error}</div>;
   }
 
-  const validStyles = taxonomy[productType] ?? [];
+  const validStyles = [...(taxonomy[productType] ?? [])].sort((a, b) => a.localeCompare(b));
 
   return (
     <div className="flex-1 flex flex-col min-h-0">

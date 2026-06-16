@@ -77,6 +77,14 @@ function ClassifyBadge({ status, isChristmas }: { status: ProductSummary["classi
   return <Tooltip content="This product hasn't been classified yet. Use Set Type & Style to assign one."><span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-500 cursor-default">No Type and Style set</span></Tooltip>;
 }
 
+function ShopifyStatusBadge({ status }: { status: ProductSummary["shopifyStatus"] }) {
+  if (status === "ACTIVE")
+    return <span className="px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700">Active</span>;
+  if (status === "DRAFT")
+    return <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600">Draft</span>;
+  return <span className="px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-700">Archived</span>;
+}
+
 function ContentBadge({ status }: { status: ProductSummary["contentStatus"] }) {
   if (status === "complete")
     return <Tooltip content="This product has its Why People Love This and Perfect For content filled in."><span className="px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700 cursor-default">Content set</span></Tooltip>;
@@ -971,6 +979,7 @@ export default function BulkPage() {
                     />
                   </th>
                   <th className="px-4 py-2.5 text-left font-medium text-gray-600 text-xs uppercase tracking-wide">Product</th>
+                  <th className="px-4 py-2.5 text-left font-medium text-gray-600 text-xs uppercase tracking-wide">Status</th>
                   <th className="px-4 py-2.5 text-left font-medium text-gray-600 text-xs uppercase tracking-wide">Type</th>
                   <th className="px-4 py-2.5 text-left font-medium text-gray-600 text-xs uppercase tracking-wide">Style</th>
                   {!showRightPanel && <th className="px-4 py-2.5 text-left font-medium text-gray-600 text-xs uppercase tracking-wide">Step 1</th>}
@@ -994,6 +1003,7 @@ export default function BulkPage() {
                       />
                     </td>
                     <td className="px-4 py-2.5 font-medium text-gray-900 max-w-xs truncate">{p.title}</td>
+                    <td className="px-4 py-2.5"><ShopifyStatusBadge status={p.shopifyStatus} /></td>
                     <td className="px-4 py-2.5 text-gray-500 text-xs">
                       {p.productTypePt || <span className="text-red-400">—</span>}
                     </td>
@@ -1006,17 +1016,17 @@ export default function BulkPage() {
                 ))}
                 {loading && (
                   <tr>
-                    <td colSpan={showRightPanel ? 4 : 6} className="px-4 py-10 text-center text-gray-400 text-sm">Loading…</td>
+                    <td colSpan={showRightPanel ? 5 : 7} className="px-4 py-10 text-center text-gray-400 text-sm">Loading…</td>
                   </tr>
                 )}
                 {!loading && fetchError && (
                   <tr>
-                    <td colSpan={showRightPanel ? 4 : 6} className="px-4 py-10 text-center text-red-500 text-sm">{fetchError}</td>
+                    <td colSpan={showRightPanel ? 5 : 7} className="px-4 py-10 text-center text-red-500 text-sm">{fetchError}</td>
                   </tr>
                 )}
                 {!loading && !fetchError && products.length === 0 && (
                   <tr>
-                    <td colSpan={showRightPanel ? 4 : 6} className="px-4 py-10 text-center text-gray-400 text-sm">No products found</td>
+                    <td colSpan={showRightPanel ? 5 : 7} className="px-4 py-10 text-center text-gray-400 text-sm">No products found</td>
                   </tr>
                 )}
               </tbody>
@@ -1178,7 +1188,7 @@ export default function BulkPage() {
                           <td className="px-3 py-2">
                             {row.error || !row.selectedType ? null : (
                               <div className="flex flex-col gap-0.5">
-                                {(taxonomy[row.selectedType] ?? []).map((style) => (
+                                {[...(taxonomy[row.selectedType] ?? [])].sort((a, b) => a.localeCompare(b)).map((style) => (
                                   <label key={style} className="flex items-center gap-1 cursor-pointer">
                                     <input
                                       type="checkbox"
@@ -1299,7 +1309,7 @@ export default function BulkPage() {
                             </div>
                             <div className="flex items-center flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
                               <span className="text-xs text-gray-400">{row.productTypePt}</span>
-                              {(taxonomy[row.productTypePt] ?? []).map((style) => (
+                              {[...(taxonomy[row.productTypePt] ?? [])].sort((a, b) => a.localeCompare(b)).map((style) => (
                                 <label key={style} className="flex items-center gap-1 cursor-pointer">
                                   <input
                                     type="checkbox"

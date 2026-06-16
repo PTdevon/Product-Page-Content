@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
             descriptionHtml: product.descriptionHtml,
             productType: type,
             productStyle: styles.join(", "),
-          });
+          }, 1);
 
           let summaryText: string | undefined;
           let summaryStatus: string;

@@ -51,6 +51,7 @@ export interface ProductSummary {
   featuredImage: string | null;
   productTypePt: string;
   productStylePt: string;
+  shopifyStatus: "ACTIVE" | "DRAFT" | "ARCHIVED";
   classifyStatus: "complete" | "partial" | "missing";
   contentStatus: "complete" | "partial" | "missing";
   isChristmas: boolean;

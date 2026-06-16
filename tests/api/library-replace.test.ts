@@ -6,6 +6,7 @@ vi.mock("@/lib/auth", () => ({ requireAuth: vi.fn().mockResolvedValue(null) }));
 vi.mock("@/lib/shopify", () => ({ shopifyGraphQL: vi.fn() }));
 vi.mock("@/lib/metafields", () => ({ setProductMetafields: vi.fn().mockResolvedValue(undefined) }));
 vi.mock("@/lib/pf-store", () => ({ getPfLibrary: vi.fn().mockResolvedValue([]) }));
+vi.mock("@/lib/hidden-products", () => ({ getHiddenProductIds: vi.fn().mockResolvedValue(new Set()) }));
 
 import { POST } from "@/app/api/library/replace/route";
 import { shopifyGraphQL } from "@/lib/shopify";
@@ -78,6 +79,7 @@ describe("POST /api/library/replace", () => {
       makeScanPage([{ id: "gid://shopify/Product/1", title: "Vase", pf1: "Old phrase", pf2: "Other" }])
     );
     const res = await POST(makeReq({ oldPhrase: "Old phrase", newPhrase: "New phrase" }));
+    await collectSSE(res);
     expect(vi.mocked(setProductMetafields)).toHaveBeenCalledWith(
       "gid://shopify/Product/1",
       expect.objectContaining({

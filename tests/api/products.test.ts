@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 
 vi.mock("@/lib/auth", () => ({ requireAuth: vi.fn().mockResolvedValue(null) }));
 vi.mock("@/lib/shopify", () => ({ shopifyGraphQL: vi.fn() }));
+vi.mock("@/lib/hidden-products", () => ({ getHiddenProductIds: vi.fn().mockResolvedValue(new Set()) }));
 
 import { GET } from "@/app/api/products/route";
 import { shopifyGraphQL } from "@/lib/shopify";

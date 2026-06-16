@@ -4,6 +4,7 @@ import { shopifyGraphQL } from "@/lib/shopify";
 import { setProductMetafields } from "@/lib/metafields";
 import { getLibraryEdits, upsertWCTEdit, upsertPFPhraseEdit } from "@/lib/library-edits-store";
 import { findPhraseForEntry } from "@/lib/pf-store";
+import { getHiddenProductIds } from "@/lib/hidden-products";
 
 const SCAN_QUERY = `
   query ScanProducts($first: Int!, $after: String) {
@@ -122,6 +123,7 @@ export async function POST(req: NextRequest) {
       let updated = 0;
       let skipped = 0;
       let failed = 0;
+      const hiddenProductIds = await getHiddenProductIds();
 
       if (type === "wct") {
         const edits = await getLibraryEdits();
@@ -142,6 +144,7 @@ export async function POST(req: NextRequest) {
         const nodes = revertIds ? await fetchNodes(revertIds) : retryIds ? await fetchNodes(retryIds) : scanAll();
 
         for await (const node of nodes) {
+          if (hiddenProductIds.has(node.id)) { skipped++; continue; }
           const productType = node.typePt?.value ?? "";
           const productStyle = node.stylePt?.value ?? "";
 
@@ -204,6 +207,7 @@ export async function POST(req: NextRequest) {
         const nodes = revertIds ? await fetchNodes(revertIds) : retryIds ? await fetchNodes(retryIds) : scanAll();
 
         for await (const node of nodes) {
+          if (hiddenProductIds.has(node.id)) { skipped++; continue; }
           const bullets = [
             node.pf1?.value ?? "", node.pf2?.value ?? "",
             node.pf3?.value ?? "", node.pf4?.value ?? "",

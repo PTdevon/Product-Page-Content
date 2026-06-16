@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { shopifyGraphQL } from "@/lib/shopify";
 import { classifyStatus, contentStatus, matchesFilter } from "@/lib/product-filters";
+import { getHiddenProductIds } from "@/lib/hidden-products";
 import type { ProductSummary } from "@/lib/types";
 
 const LIST_PRODUCTS = `
@@ -13,6 +14,7 @@ const LIST_PRODUCTS = `
           title
           handle
           tags
+          status
           featuredImage { url }
           productTypePt: metafield(namespace: "product", key: "product_type") { value }
           productStylePt: metafield(namespace: "product", key: "product_style") { value }
@@ -63,6 +65,7 @@ export async function GET(req: NextRequest) {
   type RawEdge = {
     node: {
       id: string; title: string; handle: string; tags: string[];
+      status: "ACTIVE" | "DRAFT" | "ARCHIVED";
       featuredImage: { url: string } | null;
       productTypePt: MF; productStylePt: MF; humanReviewed: MF;
       productSummary: MF; wctBullet1: MF; pfBullet1: MF;
@@ -88,6 +91,7 @@ export async function GET(req: NextRequest) {
   let filteredByTag = 0;
 
   try {
+  const hiddenProductIds = await getHiddenProductIds();
   while (matched.length < PAGE_SIZE && hasMore && iterations < MAX_ITERATIONS) {
     iterations++;
     const data = await shopifyGraphQL<{
@@ -99,6 +103,7 @@ export async function GET(req: NextRequest) {
     for (const edge of data.products.edges) {
       if (matched.length >= PAGE_SIZE) break;
       if (edge.node.tags.includes("hidden")) { filteredByTag++; continue; }
+      if (hiddenProductIds.has(edge.node.id)) { filteredByTag++; continue; }
       // In christmas mode, keep only christmas-tagged products; otherwise skip them
       const isChristmas = edge.node.tags.some(t => t.toLowerCase() === "christmas");
       if (christmas !== isChristmas) { filteredByTag++; continue; }
@@ -121,6 +126,7 @@ export async function GET(req: NextRequest) {
             featuredImage: edge.node.featuredImage?.url ?? null,
             productTypePt: edge.node.productTypePt?.value ?? "",
             productStylePt: edge.node.productStylePt?.value ?? "",
+            shopifyStatus: edge.node.status,
             classifyStatus: cs,
             contentStatus: contentSt,
             isChristmas,

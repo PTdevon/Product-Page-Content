@@ -6,6 +6,7 @@ vi.mock("@/lib/shopify", () => ({ shopifyGraphQL: vi.fn() }));
 vi.mock("@/lib/library-edits-store", () => ({ getLibraryEdits: vi.fn() }));
 vi.mock("@/lib/pf-store", () => ({ findPhraseForEntry: vi.fn() }));
 vi.mock("@/data/why-choose-this.json", () => ({ default: [] }));
+vi.mock("@/lib/hidden-products", () => ({ getHiddenProductIds: vi.fn().mockResolvedValue(new Set()) }));
 
 import { POST } from "@/app/api/library/find/route";
 import { shopifyGraphQL } from "@/lib/shopify";

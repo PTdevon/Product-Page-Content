@@ -60,7 +60,7 @@ export async function generateProductSummary(product: {
   descriptionHtml: string;
   productType: string;
   productStyle: string;
-}): Promise<{ options: string[] } | { error: GenerationError }> {
+}, numOptions: number = 3): Promise<{ options: string[] } | { error: GenerationError }> {
   if (!process.env.ANTHROPIC_API_KEY) {
     return {
       error: {
@@ -77,7 +77,7 @@ Product type: ${product.productType}
 Product style: ${product.productStyle}
 Product description: ${descriptionText || "(no description available)"}
 
-Write exactly 3 distinct product summary options for this product. Number them 1, 2, 3. Each option must take a genuinely different angle — vary the emotional territory, not just the wording. Return only the numbered options, nothing else.`;
+Write exactly ${numOptions} distinct product summary option${numOptions === 1 ? "" : "s"} for this product. Number ${numOptions === 1 ? "it 1" : `them 1 through ${numOptions}`}. ${numOptions === 1 ? "" : "Each option must take a genuinely different angle — vary the emotional territory, not just the wording. "}Return only the numbered option${numOptions === 1 ? "" : "s"}, nothing else.`;
 
   try {
     const response = await client.messages.create({
@@ -95,7 +95,7 @@ Write exactly 3 distinct product summary options for this product. Number them 1
       .map((line) => line.replace(/^\d+[\.\)]\s*/, "").trim())
       .filter((line) => line.length > 10);
 
-    return { options: options.slice(0, 3) };
+    return { options: options.slice(0, numOptions) };
   } catch (err: unknown) {
     const e = err as { status?: number; error?: { type?: string }; code?: string; message?: string };
     const status = e?.status;

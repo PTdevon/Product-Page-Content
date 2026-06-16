@@ -3,6 +3,7 @@ import { requireAuth } from "@/lib/auth";
 import { shopifyGraphQL } from "@/lib/shopify";
 import { setProductMetafields } from "@/lib/metafields";
 import { getPfLibrary } from "@/lib/pf-store";
+import { getHiddenProductIds } from "@/lib/hidden-products";
 import type { PerfectForEntry } from "@/lib/types";
 
 // Replaces oldPhrase with newPhrase in product Perfect For bullets.
@@ -130,8 +131,10 @@ export async function POST(req: NextRequest) {
       let failed = 0;
       // Loaded lazily — only if a duplicate case is encountered
       let pfLibrary: PerfectForEntry[] | null = null;
+      const hiddenProductIds = await getHiddenProductIds();
 
       const process = async (node: ScanNode) => {
+        if (hiddenProductIds.has(node.id)) { skipped++; return; }
         const nodeType = node.typePt?.value ?? "";
         const nodeStyle = node.stylePt?.value ?? "";
 

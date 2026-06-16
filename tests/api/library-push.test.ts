@@ -13,6 +13,7 @@ vi.mock("@/lib/library-edits-store", () => ({
 vi.mock("@/lib/pf-store", () => ({
   findPhraseForEntry: vi.fn(),
 }));
+vi.mock("@/lib/hidden-products", () => ({ getHiddenProductIds: vi.fn().mockResolvedValue(new Set()) }));
 
 import { POST } from "@/app/api/library/push/route";
 import { shopifyGraphQL } from "@/lib/shopify";

@@ -3,6 +3,7 @@ import { requireAuth } from "@/lib/auth";
 import { shopifyGraphQL } from "@/lib/shopify";
 import { getLibraryEdits } from "@/lib/library-edits-store";
 import { findPhraseForEntry } from "@/lib/pf-store";
+import { getHiddenProductIds } from "@/lib/hidden-products";
 
 const SCAN_QUERY = `
   query ScanProducts($first: Int!, $after: String) {
@@ -63,6 +64,7 @@ export async function POST(req: NextRequest) {
   const { type, id, pendingText, pendingSubtext, pendingPhrase } = body;
 
   const edits = await getLibraryEdits();
+  const hiddenProductIds = await getHiddenProductIds();
   const matches: { id: string; title: string }[] = [];
   let cursor: string | null = null;
 
@@ -87,6 +89,7 @@ export async function POST(req: NextRequest) {
       const data: ScanResult = await shopifyGraphQL<ScanResult>(SCAN_QUERY, { first: 250, after: cursor });
 
       for (const { node } of data.products.edges) {
+        if (hiddenProductIds.has(node.id)) continue;
         const productType = node.typePt?.value ?? "";
         const productStyle = node.stylePt?.value ?? "";
         if (productType !== entryProductType || !productStyle.split(",").map((s: string) => s.trim()).includes(entryProductStyle)) continue;
@@ -111,6 +114,7 @@ export async function POST(req: NextRequest) {
       const data: ScanResult = await shopifyGraphQL<ScanResult>(SCAN_QUERY, { first: 250, after: cursor });
 
       for (const { node } of data.products.edges) {
+        if (hiddenProductIds.has(node.id)) continue;
         const nodeType = node.typePt?.value ?? "";
         const nodeStyle = node.stylePt?.value ?? "";
         if (filterType && nodeType !== filterType) continue;
@@ -143,6 +147,7 @@ export async function POST(req: NextRequest) {
       const data: ScanResult = await shopifyGraphQL<ScanResult>(SCAN_QUERY, { first: 250, after: cursor });
 
       for (const { node } of data.products.edges) {
+        if (hiddenProductIds.has(node.id)) continue;
         const bullets = [node.pf1?.value ?? "", node.pf2?.value ?? "", node.pf3?.value ?? "", node.pf4?.value ?? ""];
         if (bullets.some((b) => searchFor.has(b))) {
           matches.push({ id: node.id, title: node.title });
