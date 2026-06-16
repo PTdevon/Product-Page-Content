@@ -12,6 +12,7 @@ import type { WhyChooseThisEntry } from "@/lib/types";
 import type { WCTEdit, PFPhraseEdit } from "@/lib/library-edits-store";
 import type { PFPhraseRow } from "@/lib/pf-store";
 import { IconImg } from "@/components/IconsProvider";
+import { runCascadeStream, type CascadeProgressEvent } from "@/lib/sse-cascade";
 
 const WCT_CATEGORIES = ["Stands Out", "Gift Impact", "Trusted Pick", "Worth Keeping"] as const;
 const PF_CATEGORIES  = ["Occasion", "Person", "Context"] as const;
@@ -19,7 +20,7 @@ const PF_CATEGORIES  = ["Occasion", "Person", "Context"] as const;
 type WCTRow = WhyChooseThisEntry & { _edit: WCTEdit | null };
 
 type PushEvent =
-  | { type: "progress"; title: string; status: "updated" | "error" }
+  | { type: "progress"; id?: string; title: string; status: "updated" | "error"; originalBullets?: string[] }
   | { type: "done"; total: number; updated: number; swapped?: number; alternated?: number; skipped: number; failed: number };
 
 // ── WCT Edit Modal (unchanged) ────────────────────────────────────────────────
@@ -50,6 +51,10 @@ function WCTEditModal({ entry, onClose, onSaved, taxonomy }: WCTEditModalProps) 
   const [foundProducts, setFoundProducts] = useState<{ id: string; title: string }[]>([]);
   const [updateLog, setUpdateLog] = useState<{ title: string; status: "updated" | "error" }[]>([]);
   const [updateResult, setUpdateResult] = useState<{ updated: number; skipped: number; failed: number } | null>(null);
+  const [updatedIds, setUpdatedIds] = useState<{ id: string; title: string }[]>([]);
+  const [failedIds, setFailedIds] = useState<{ id: string; title: string }[]>([]);
+  const [pushReverting, setPushReverting] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
   const updatingRef = useRef(false);
 
   const availableStyles = productType ? (taxonomy[productType] ?? []) : [];
@@ -150,46 +155,79 @@ function WCTEditModal({ entry, onClose, onSaved, taxonomy }: WCTEditModalProps) 
     if (!textChanged) handleFind();
   }
 
+  function runPushCascade(
+    body: Record<string, unknown>,
+    onProgress: (ev: CascadeProgressEvent) => void
+  ): Promise<{ failed: number; receivedDone: boolean }> {
+    return runCascadeStream("/api/library/push", body, onProgress);
+  }
+
   async function handleUpdate() {
     if (!entry || updatingRef.current) return;
     updatingRef.current = true;
     setFindPhase("updating");
     setUpdateLog([]);
     setUpdateResult(null);
-    const res = await fetch("/api/library/push", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "wct", id: entry.id }),
+    setPushReverting(false);
+
+    const newUpdated: { id: string; title: string }[] = [];
+    const newFailed: { id: string; title: string }[] = [];
+    const { receivedDone } = await runPushCascade({ type: "wct", id: entry.id }, (ev) => {
+      setUpdateLog((prev) => [...prev, { title: ev.title, status: ev.status }]);
+      if (!ev.id) return;
+      (ev.status === "updated" ? newUpdated : newFailed).push({ id: ev.id, title: ev.title });
     });
-    if (!res.ok || !res.body) { updatingRef.current = false; setFindPhase("found"); return; }
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let receivedDone = false;
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          try {
-            const event = JSON.parse(line.slice(6)) as PushEvent;
-            if (event.type === "progress") {
-              setUpdateLog((prev) => [...prev, { title: event.title, status: event.status }]);
-            } else if (event.type === "done") {
-              setUpdateResult({ updated: event.updated, skipped: event.skipped, failed: event.failed });
-              setFindPhase("done");
-              receivedDone = true;
-            }
-          } catch { /* ignore */ }
-        }
-        if (receivedDone) break;
-      }
-    } catch { /* network error */ } finally { updatingRef.current = false; }
+
+    updatingRef.current = false;
+    setUpdatedIds(newUpdated);
+    setFailedIds(newFailed);
+    setUpdateResult({ updated: newUpdated.length, skipped: 0, failed: newFailed.length });
     onSaved();
-    if (!receivedDone) setFindPhase("found");
+    setFindPhase(receivedDone ? "done" : "found");
+  }
+
+  async function retryUpdate() {
+    if (!entry || failedIds.length === 0 || pushBusy) return;
+    setPushBusy(true);
+    setUpdateLog([]);
+
+    const newUpdated: { id: string; title: string }[] = [];
+    const stillFailed: { id: string; title: string }[] = [];
+    const body = pushReverting
+      ? { type: "wct", id: entry.id, revertIds: failedIds.map((p) => p.id) }
+      : { type: "wct", id: entry.id, retryIds: failedIds.map((p) => p.id) };
+    await runPushCascade(body, (ev) => {
+      setUpdateLog((prev) => [...prev, { title: ev.title, status: ev.status }]);
+      if (!ev.id) return;
+      (ev.status === "updated" ? newUpdated : stillFailed).push({ id: ev.id, title: ev.title });
+    });
+
+    const mergedUpdated = pushReverting ? stillFailed : [...updatedIds, ...newUpdated];
+    setUpdatedIds(mergedUpdated);
+    setFailedIds(stillFailed);
+    setUpdateResult({ updated: pushReverting ? newUpdated.length : mergedUpdated.length, skipped: 0, failed: stillFailed.length });
+    setPushBusy(false);
+    onSaved();
+  }
+
+  async function cancelAndRevertUpdate() {
+    if (!entry || pushBusy) return;
+    if (updatedIds.length === 0) { setFindPhase("found"); return; }
+    setPushBusy(true);
+    setPushReverting(true);
+    setUpdateLog([]);
+
+    const stillFailed: { id: string; title: string }[] = [];
+    await runPushCascade({ type: "wct", id: entry.id, revertIds: updatedIds.map((p) => p.id) }, (ev) => {
+      setUpdateLog((prev) => [...prev, { title: ev.title, status: ev.status }]);
+      if (ev.id && ev.status === "error") stillFailed.push({ id: ev.id, title: ev.title });
+    });
+
+    setUpdatedIds(stillFailed);
+    setFailedIds(stillFailed);
+    setUpdateResult({ updated: updatedIds.length - stillFailed.length, skipped: 0, failed: stillFailed.length });
+    setPushBusy(false);
+    onSaved();
   }
 
   return (
@@ -283,7 +321,18 @@ function WCTEditModal({ entry, onClose, onSaved, taxonomy }: WCTEditModalProps) 
           updateResult={updateResult}
           canUpdate={textChanged}
           onUpdate={handleUpdate}
-          onDismiss={() => { setFindPhase("idle"); setFoundProducts([]); setUpdateLog([]); setUpdateResult(null); }}
+          onDismiss={() => {
+            setFindPhase("idle"); setFoundProducts([]); setUpdateLog([]); setUpdateResult(null);
+            setUpdatedIds([]); setFailedIds([]); setPushReverting(false);
+          }}
+          onRetry={failedIds.length > 0 ? retryUpdate : undefined}
+          onRevert={!pushReverting && updatedIds.length > 0 ? cancelAndRevertUpdate : undefined}
+          busy={pushBusy}
+          notCommittedMessage={
+            pushReverting
+              ? `Reverting — ${failedIds.length} product${failedIds.length !== 1 ? "s" : ""} still need reverting.`
+              : `Not yet fully pushed — ${failedIds.length} product${failedIds.length !== 1 ? "s" : ""} still need updating.`
+          }
         />
       )}
     </div>
@@ -329,6 +378,10 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
   const [foundProducts, setFoundProducts] = useState<{ id: string; title: string }[]>([]);
   const [updateLog, setUpdateLog] = useState<{ title: string; status: "updated" | "error" }[]>([]);
   const [updateResult, setUpdateResult] = useState<{ updated: number; skipped: number; failed: number } | null>(null);
+  const [updatedIds, setUpdatedIds] = useState<{ id: string; title: string; originalIcon?: string }[]>([]);
+  const [failedIds, setFailedIds] = useState<{ id: string; title: string; originalIcon?: string }[]>([]);
+  const [pushReverting, setPushReverting] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
   const updatingRef = useRef(false);
 
   // Delete phrase / remove assignment shared state
@@ -343,6 +396,11 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
   const [actionLog, setActionLog] = useState<{ title: string; status: "updated" | "error" }[]>([]);
   const [actionResult, setActionResult] = useState<{ updated: number; swapped: number; alternated: number; failed: number } | null>(null);
   const [actionError, setActionError] = useState("");
+  const [actionUpdatedItems, setActionUpdatedItems] = useState<{ id: string; title: string; originalBullets: string[] }[]>([]);
+  const [actionFailedItems, setActionFailedItems] = useState<{ id: string; title: string; originalBullets: string[] }[]>([]);
+  const [actionReverting, setActionReverting] = useState(false);
+  const [actionBusy, setActionBusy] = useState(false);
+  const lastReplaceParamsRef = useRef<{ oldPhrase: string; newPhrase: string; filterType?: string; filterStyle?: string } | null>(null);
   const actionRef = useRef(false);
 
   const hasEdit = !!entry?._edit;
@@ -354,49 +412,141 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
   const iconChangedSinceOpen = currentIcon !== originalIcon;
   const canFind = !isNew;
 
-  // ── Shared helper: stream a replace operation ──────────────────────────────
-  async function streamReplace(oldPhrase: string, newPhrase: string, filterType?: string, filterStyle?: string): Promise<boolean> {
-    if (actionRef.current) return false;
+  // ── Shared helper: stream a /api/library/replace call ─────────────────────
+  function runReplaceCascade(
+    body: Record<string, unknown>,
+    onProgress: (ev: CascadeProgressEvent & { originalBullets?: string[] }) => void
+  ): Promise<{ failed: number; receivedDone: boolean }> {
+    return runCascadeStream("/api/library/replace", body, onProgress);
+  }
+
+  // ── Initial replace: scans + swaps oldPhrase -> newPhrase across all matching products ──
+  async function streamReplace(oldPhrase: string, newPhrase: string, filterType?: string, filterStyle?: string): Promise<{ failed: number } | null> {
+    if (actionRef.current) return null;
     actionRef.current = true;
     setActionPhase("replacing");
     setActionLog([]);
     setActionResult(null);
+    setActionReverting(false);
+    lastReplaceParamsRef.current = { oldPhrase, newPhrase, filterType, filterStyle };
 
-    const res = await fetch("/api/library/replace", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ oldPhrase, newPhrase, productType: filterType, productStyle: filterStyle }),
-    });
-    if (!res.ok || !res.body) { actionRef.current = false; setActionPhase("confirm"); return false; }
+    const updatedItems: { id: string; title: string; originalBullets: string[] }[] = [];
+    const failedItems: { id: string; title: string; originalBullets: string[] }[] = [];
 
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let receivedDone = false;
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          try {
-            const event = JSON.parse(line.slice(6)) as PushEvent;
-            if (event.type === "progress") {
-              setActionLog((prev) => [...prev, { title: event.title, status: event.status }]);
-            } else if (event.type === "done") {
-              setActionResult({ updated: event.updated, swapped: event.swapped ?? event.updated, alternated: event.alternated ?? 0, failed: event.failed });
-              setActionPhase("done");
-              receivedDone = true;
-            }
-          } catch { /* ignore */ }
-        }
-        if (receivedDone) break;
+    const { failed, receivedDone } = await runReplaceCascade(
+      { oldPhrase, newPhrase, productType: filterType, productStyle: filterStyle },
+      (ev) => {
+        setActionLog((prev) => [...prev, { title: ev.title, status: ev.status }]);
+        if (!ev.id) return;
+        const item = { id: ev.id, title: ev.title, originalBullets: ev.originalBullets ?? [] };
+        (ev.status === "updated" ? updatedItems : failedItems).push(item);
       }
-    } catch { /* network error */ } finally { actionRef.current = false; }
-    if (!receivedDone) setActionPhase("confirm");
-    return receivedDone;
+    );
+
+    actionRef.current = false;
+    setActionUpdatedItems(updatedItems);
+    setActionFailedItems(failedItems);
+    setActionResult({ updated: updatedItems.length, swapped: updatedItems.length, alternated: 0, failed: failedItems.length });
+
+    if (!receivedDone) { setActionPhase("confirm"); return null; }
+    setActionPhase("done");
+    return { failed };
+  }
+
+  // ── Retry: re-run just the failed products, in whichever direction is active ──
+  async function retryReplaceAction() {
+    if (actionFailedItems.length === 0 || actionBusy) return;
+    setActionBusy(true);
+    setActionLog([]);
+
+    // While reverting, retry must use the same exact-bullets restore as
+    // cancelAndRevertReplaceAction — a generic oldPhrase/newPhrase swap would
+    // silently skip any product that originally received an "alternated"
+    // library phrase rather than the literal newPhrase (its bullet never
+    // matches the swap target), permanently dropping it from tracking.
+    if (actionReverting) {
+      const stillFailed: { id: string; title: string; originalBullets: string[] }[] = [];
+      await runReplaceCascade(
+        { revert: actionFailedItems.map((p) => ({ id: p.id, bullets: p.originalBullets })) },
+        (ev) => {
+          setActionLog((prev) => [...prev, { title: ev.title, status: ev.status }]);
+          if (!ev.id || ev.status !== "error") return;
+          const original = actionFailedItems.find((p) => p.id === ev.id);
+          stillFailed.push({ id: ev.id, title: original?.title ?? ev.title, originalBullets: original?.originalBullets ?? [] });
+        }
+      );
+      setActionUpdatedItems(stillFailed);
+      setActionFailedItems(stillFailed);
+      setActionResult({
+        updated: actionFailedItems.length - stillFailed.length,
+        swapped: actionFailedItems.length - stillFailed.length,
+        alternated: 0,
+        failed: stillFailed.length,
+      });
+      setActionBusy(false);
+      if (stillFailed.length === 0) cancelAction();
+      return;
+    }
+
+    const params = lastReplaceParamsRef.current;
+    if (!params) { setActionBusy(false); return; }
+
+    const newUpdated: { id: string; title: string; originalBullets: string[] }[] = [];
+    const stillFailed: { id: string; title: string; originalBullets: string[] }[] = [];
+
+    await runReplaceCascade(
+      {
+        oldPhrase: params.oldPhrase,
+        newPhrase: params.newPhrase,
+        productType: params.filterType,
+        productStyle: params.filterStyle,
+        retryIds: actionFailedItems.map((p) => p.id),
+      },
+      (ev) => {
+        setActionLog((prev) => [...prev, { title: ev.title, status: ev.status }]);
+        if (!ev.id) return;
+        const item = { id: ev.id, title: ev.title, originalBullets: ev.originalBullets ?? [] };
+        (ev.status === "updated" ? newUpdated : stillFailed).push(item);
+      }
+    );
+
+    const mergedUpdated = [...actionUpdatedItems, ...newUpdated];
+    setActionUpdatedItems(mergedUpdated);
+    setActionFailedItems(stillFailed);
+    setActionResult({ updated: mergedUpdated.length, swapped: mergedUpdated.length, alternated: 0, failed: stillFailed.length });
+    setActionBusy(false);
+
+    if (stillFailed.length > 0) return;
+    await finalizeAction();
+  }
+
+  // ── Cancel & Revert: push the original bullets back onto already-updated products ──
+  async function cancelAndRevertReplaceAction() {
+    if (actionUpdatedItems.length === 0 || actionBusy) { cancelAction(); return; }
+    setActionBusy(true);
+    setActionReverting(true);
+    setActionLog([]);
+
+    const stillFailed: { id: string; title: string; originalBullets: string[] }[] = [];
+
+    await runReplaceCascade(
+      { revert: actionUpdatedItems.map((p) => ({ id: p.id, bullets: p.originalBullets })) },
+      (ev) => {
+        setActionLog((prev) => [...prev, { title: ev.title, status: ev.status }]);
+        if (!ev.id) return;
+        if (ev.status === "error") {
+          const original = actionUpdatedItems.find((p) => p.id === ev.id);
+          stillFailed.push({ id: ev.id, title: ev.title, originalBullets: original?.originalBullets ?? [] });
+        }
+      }
+    );
+
+    setActionUpdatedItems(stillFailed);
+    setActionFailedItems(stillFailed);
+    setActionResult({ updated: actionUpdatedItems.length - stillFailed.length, swapped: actionUpdatedItems.length - stillFailed.length, alternated: 0, failed: stillFailed.length });
+    setActionBusy(false);
+
+    if (stillFailed.length === 0) cancelAction();
   }
 
   // ── Delete phrase flow ──────────────────────────────────────────────────────
@@ -406,6 +556,10 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
     setActionPhase("checking");
     setActionReplacement("");
     setActionReplacementPhrases([]);
+    setActionUpdatedItems([]);
+    setActionFailedItems([]);
+    setActionReverting(false);
+    lastReplaceParamsRef.current = null;
 
     const [findRes, phrasesRes] = await Promise.all([
       fetch("/api/library/find", {
@@ -433,26 +587,58 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
     setActionPhase("confirm");
   }
 
+  // ── Commits the pending delete/remove-assignment. Only called once the
+  // replace cascade (if any) has fully succeeded — failed === 0. ──────────────
+  async function finalizeAction(): Promise<void> {
+    if (mode === "delete") {
+      if (!entry) return;
+      const res = await fetch("/api/library/entry", {
+        method: "DELETE", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "pf-phrase", id: entry.id }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string };
+        setActionError(data.error ?? `Delete failed (${res.status})`);
+        setActionPhase("error");
+        return;
+      }
+      onSaved();
+      onClose();
+      return;
+    }
+
+    if (mode === "remove-assignment") {
+      if (!removeApp) return;
+      const res = await fetch("/api/library/entry", {
+        method: "DELETE", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "pf-applicability", id: removeApp.id }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string };
+        setActionError(data.error ?? "Failed to remove assignment");
+        setActionPhase("error");
+        return;
+      }
+      const deletedId = removeApp.id;
+      setPendingDeleteIds(prev => { const n = new Set(prev); n.add(deletedId); return n; });
+      setMode("edit");
+      setRemoveApp(null);
+      setActionPhase("idle");
+      onSaved();
+    }
+  }
+
   async function confirmDeletePhrase() {
     if (!entry) return;
     const replacement = actionReplacementPhrases.find((p) => p.phraseId === actionReplacement);
     if (actionFoundCount > 0 && replacement) {
-      await streamReplace(entry.phrase, replacement.phrase);
-      // streamReplace sets actionPhase to "done" — the "Remove assignment" button in the
-      // done state handles the final step for remove-assignment; for delete we proceed here
+      const result = await streamReplace(entry.phrase, replacement.phrase);
+      // Only proceed once every affected product updated cleanly — on partial
+      // failure, stay in "done" with the phrase un-deleted; the modal offers
+      // Retry/Cancel & Revert.
+      if (!result || result.failed > 0) return;
     }
-    const res = await fetch("/api/library/entry", {
-      method: "DELETE", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "pf-phrase", id: entry.id }),
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({})) as { error?: string };
-      setActionError(data.error ?? `Delete failed (${res.status})`);
-      setActionPhase("error");
-      return;
-    }
-    onSaved();
-    onClose();
+    await finalizeAction();
   }
 
   // ── Remove assignment flow ──────────────────────────────────────────────────
@@ -462,6 +648,10 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
     setActionPhase("checking");
     setActionReplacement("");
     setActionReplacementPhrases([]);
+    setActionUpdatedItems([]);
+    setActionFailedItems([]);
+    setActionReverting(false);
+    lastReplaceParamsRef.current = null;
 
     const phraseText = entry?.phrase ?? "";
     const [findRes, phrasesRes] = await Promise.all([
@@ -494,25 +684,10 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
     if (!removeApp || !entry) return;
     const replacement = actionReplacementPhrases.find((p) => p.phraseId === actionReplacement);
     if (actionFoundCount > 0 && replacement) {
-      const ok = await streamReplace(entry.phrase, replacement.phrase, removeApp.productType, removeApp.productStyle);
-      if (!ok) return;
+      const result = await streamReplace(entry.phrase, replacement.phrase, removeApp.productType, removeApp.productStyle);
+      if (!result || result.failed > 0) return;
     }
-    const res = await fetch("/api/library/entry", {
-      method: "DELETE", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "pf-applicability", id: removeApp.id }),
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({})) as { error?: string };
-      setActionError(data.error ?? "Failed to remove assignment");
-      setActionPhase("error");
-      return;
-    }
-    const deletedId = removeApp.id;
-    setPendingDeleteIds(prev => { const n = new Set(prev); n.add(deletedId); return n; });
-    setMode("edit");
-    setRemoveApp(null);
-    setActionPhase("idle");
-    onSaved();
+    await finalizeAction();
   }
 
   function cancelAction() {
@@ -522,6 +697,10 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
     setActionLog([]);
     setActionResult(null);
     setActionFoundProducts([]);
+    setActionUpdatedItems([]);
+    setActionFailedItems([]);
+    setActionReverting(false);
+    lastReplaceParamsRef.current = null;
   }
 
   async function handleSave(): Promise<boolean> {
@@ -639,46 +818,92 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
     if (!phraseChangedSinceOpen && !iconChangedSinceOpen) handleFind();
   }
 
+  function runPushCascade(
+    body: Record<string, unknown>,
+    onProgress: (ev: CascadeProgressEvent) => void
+  ): Promise<{ failed: number; receivedDone: boolean }> {
+    return runCascadeStream("/api/library/push", body, onProgress);
+  }
+
   async function handleUpdate() {
     if (!entry || updatingRef.current) return;
     updatingRef.current = true;
     setFindPhase("updating");
     setUpdateLog([]);
     setUpdateResult(null);
-    const res = await fetch("/api/library/push", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "pf", id: entry.id }),
+    setPushReverting(false);
+
+    const newUpdated: { id: string; title: string; originalIcon?: string }[] = [];
+    const newFailed: { id: string; title: string; originalIcon?: string }[] = [];
+    const { receivedDone } = await runPushCascade({ type: "pf", id: entry.id }, (ev) => {
+      setUpdateLog((prev) => [...prev, { title: ev.title, status: ev.status }]);
+      if (!ev.id) return;
+      const item = { id: ev.id, title: ev.title, originalIcon: ev.originalIcon as string | undefined };
+      (ev.status === "updated" ? newUpdated : newFailed).push(item);
     });
-    if (!res.ok || !res.body) { updatingRef.current = false; setFindPhase("found"); return; }
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let receivedDone = false;
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          try {
-            const event = JSON.parse(line.slice(6)) as PushEvent;
-            if (event.type === "progress") {
-              setUpdateLog((prev) => [...prev, { title: event.title, status: event.status }]);
-            } else if (event.type === "done") {
-              setUpdateResult({ updated: event.updated, skipped: event.skipped, failed: event.failed });
-              setFindPhase("done");
-              receivedDone = true;
-            }
-          } catch { /* ignore */ }
-        }
-        if (receivedDone) break;
-      }
-    } catch { /* network error */ } finally { updatingRef.current = false; }
+
+    updatingRef.current = false;
+    setUpdatedIds(newUpdated);
+    setFailedIds(newFailed);
+    setUpdateResult({ updated: newUpdated.length, skipped: 0, failed: newFailed.length });
     onSaved();
-    if (!receivedDone) setFindPhase("found");
+    setFindPhase(receivedDone ? "done" : "found");
+  }
+
+  async function retryUpdate() {
+    if (!entry || failedIds.length === 0 || pushBusy) return;
+    setPushBusy(true);
+    setUpdateLog([]);
+
+    const newUpdated: { id: string; title: string; originalIcon?: string }[] = [];
+    const stillFailed: { id: string; title: string; originalIcon?: string }[] = [];
+    const body = pushReverting
+      ? {
+          type: "pf", id: entry.id, revertIds: failedIds.map((p) => p.id),
+          revertIcons: Object.fromEntries(
+            failedIds.filter((p) => p.originalIcon !== undefined).map((p) => [p.id, p.originalIcon])
+          ),
+        }
+      : { type: "pf", id: entry.id, retryIds: failedIds.map((p) => p.id) };
+    await runPushCascade(body, (ev) => {
+      setUpdateLog((prev) => [...prev, { title: ev.title, status: ev.status }]);
+      if (!ev.id) return;
+      const item = { id: ev.id, title: ev.title, originalIcon: ev.originalIcon as string | undefined };
+      (ev.status === "updated" ? newUpdated : stillFailed).push(item);
+    });
+
+    const mergedUpdated = pushReverting ? stillFailed : [...updatedIds, ...newUpdated];
+    setUpdatedIds(mergedUpdated);
+    setFailedIds(stillFailed);
+    setUpdateResult({ updated: pushReverting ? newUpdated.length : mergedUpdated.length, skipped: 0, failed: stillFailed.length });
+    setPushBusy(false);
+    onSaved();
+  }
+
+  async function cancelAndRevertUpdate() {
+    if (!entry || pushBusy) return;
+    if (updatedIds.length === 0) { setFindPhase("found"); return; }
+    setPushBusy(true);
+    setPushReverting(true);
+    setUpdateLog([]);
+
+    const stillFailed: { id: string; title: string; originalIcon?: string }[] = [];
+    const revertIcons = Object.fromEntries(
+      updatedIds.filter((p) => p.originalIcon !== undefined).map((p) => [p.id, p.originalIcon])
+    );
+    await runPushCascade({ type: "pf", id: entry.id, revertIds: updatedIds.map((p) => p.id), revertIcons }, (ev) => {
+      setUpdateLog((prev) => [...prev, { title: ev.title, status: ev.status }]);
+      if (ev.id && ev.status === "error") {
+        const original = updatedIds.find((p) => p.id === ev.id);
+        stillFailed.push({ id: ev.id, title: ev.title, originalIcon: original?.originalIcon });
+      }
+    });
+
+    setUpdatedIds(stillFailed);
+    setFailedIds(stillFailed);
+    setUpdateResult({ updated: updatedIds.length - stillFailed.length, skipped: 0, failed: stillFailed.length });
+    setPushBusy(false);
+    onSaved();
   }
 
   // Sets for Bug 1: disable already-used type/style combos
@@ -925,7 +1150,18 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
           updateResult={updateResult}
           canUpdate={phraseChangedSinceOpen || iconChangedSinceOpen}
           onUpdate={handleUpdate}
-          onDismiss={() => { setFindPhase("idle"); setFoundProducts([]); setUpdateLog([]); setUpdateResult(null); }}
+          onDismiss={() => {
+            setFindPhase("idle"); setFoundProducts([]); setUpdateLog([]); setUpdateResult(null);
+            setUpdatedIds([]); setFailedIds([]); setPushReverting(false);
+          }}
+          onRetry={failedIds.length > 0 ? retryUpdate : undefined}
+          onRevert={!pushReverting && updatedIds.length > 0 ? cancelAndRevertUpdate : undefined}
+          busy={pushBusy}
+          notCommittedMessage={
+            pushReverting
+              ? `Reverting — ${failedIds.length} product${failedIds.length !== 1 ? "s" : ""} still need reverting.`
+              : `Not yet fully pushed — ${failedIds.length} product${failedIds.length !== 1 ? "s" : ""} still need updating.`
+          }
         />
       )}
       {mode !== "edit" && (
@@ -944,6 +1180,10 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
           onReplacementChange={setActionReplacement}
           onConfirm={mode === "delete" ? confirmDeletePhrase : confirmRemoveAssignment}
           onCancel={cancelAction}
+          onRetry={actionFailedItems.length > 0 ? retryReplaceAction : undefined}
+          onRevert={!actionReverting && actionUpdatedItems.length > 0 ? cancelAndRevertReplaceAction : undefined}
+          busy={actionBusy}
+          reverting={actionReverting}
         />
       )}
       {showIconPicker && (

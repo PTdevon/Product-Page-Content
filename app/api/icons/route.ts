@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
-import { getAllIcons, getIcon, createIcon, deleteIcon } from "@/lib/icon-metaobjects-store";
+import { getAllIcons, getIcon, createIcon, deleteIcon, ensureDefinitionAndSeed } from "@/lib/icon-metaobjects-store";
 import { findIconUsage } from "@/lib/icon-usage";
 import { minifySvg } from "@/lib/icons";
 
@@ -66,7 +66,11 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const icons = await getAllIcons();
+    let icons = await getAllIcons();
+    if (icons.length === 0) {
+      await ensureDefinitionAndSeed();
+      icons = await getAllIcons();
+    }
     icons.sort((a, b) => a.handle.localeCompare(b.handle));
     return NextResponse.json({ icons });
   } catch (e) {

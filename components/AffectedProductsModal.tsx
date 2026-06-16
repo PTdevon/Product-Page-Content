@@ -12,6 +12,10 @@ interface AffectedProductsModalProps {
   canUpdate: boolean;
   onUpdate: () => void;
   onDismiss: () => void;
+  onRetry?: () => void;
+  onRevert?: () => void;
+  busy?: boolean;
+  notCommittedMessage?: string;
 }
 
 export default function AffectedProductsModal({
@@ -23,6 +27,10 @@ export default function AffectedProductsModal({
   canUpdate,
   onUpdate,
   onDismiss,
+  onRetry,
+  onRevert,
+  busy,
+  notCommittedMessage,
 }: AffectedProductsModalProps) {
   const logRef = useRef<HTMLDivElement>(null);
 
@@ -32,6 +40,18 @@ export default function AffectedProductsModal({
 
   const isUpdating = phase === "updating";
   const isDone = phase === "done";
+  const hasFailures = isDone && !!updateResult && updateResult.failed > 0;
+  const canRetryOrRevert = hasFailures && (onRetry || onRevert);
+
+  function handleDismiss() {
+    if (canRetryOrRevert) {
+      const ok = window.confirm(
+        `${updateResult!.failed} product${updateResult!.failed !== 1 ? "s" : ""} ${updateResult!.failed !== 1 ? "are" : "is"} still left in a partially-applied state and won't be retried or reverted. Close anyway?`
+      );
+      if (!ok) return;
+    }
+    onDismiss();
+  }
 
   function headerText() {
     if (phase === "finding") return "Searching products…";
@@ -40,6 +60,7 @@ export default function AffectedProductsModal({
       return `${products.length} product${products.length !== 1 ? "s" : ""} affected`;
     }
     if (phase === "updating") return "Updating products…";
+    if (busy) return "Working…";
     if (isDone && updateResult) {
       return `Done — ${updateResult.updated} updated${updateResult.failed > 0 ? ` · ${updateResult.failed} failed` : ""}`;
     }
@@ -47,7 +68,7 @@ export default function AffectedProductsModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40" onClick={isUpdating ? undefined : onDismiss}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40" onClick={isUpdating || busy ? undefined : handleDismiss}>
       <div
         className="bg-white rounded-xl shadow-2xl w-full max-w-sm mx-4 flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
@@ -56,8 +77,8 @@ export default function AffectedProductsModal({
         <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between">
           <span className="text-sm font-semibold text-gray-900">{headerText()}</span>
           <button
-            onClick={onDismiss}
-            disabled={isUpdating}
+            onClick={handleDismiss}
+            disabled={isUpdating || busy}
             className="w-7 h-7 flex items-center justify-center rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 text-lg leading-none disabled:opacity-30"
           >
             &times;
@@ -83,18 +104,56 @@ export default function AffectedProductsModal({
           {phase === "updating" && updateLog.length === 0 && (
             <div className="text-gray-400">Starting update…</div>
           )}
+          {hasFailures && (
+            <div className="text-amber-600 pt-1.5">
+              {notCommittedMessage ?? `Not fully applied — ${updateResult!.failed} still need updating.`}
+            </div>
+          )}
         </div>
 
         {/* Footer */}
         {(phase === "found" || isDone) && (
           <div className="px-5 py-3.5 border-t border-gray-100 flex items-center justify-end gap-3">
-            {isDone && (
+            {isDone && !canRetryOrRevert && (
               <button
                 onClick={onDismiss}
                 className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded hover:bg-gray-50 transition-colors"
               >
                 Close
               </button>
+            )}
+            {canRetryOrRevert && (
+              <>
+                <button
+                  onClick={handleDismiss}
+                  disabled={busy}
+                  className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-40 transition-colors"
+                >
+                  Close
+                </button>
+                {onRevert && (
+                  <Tooltip content="Undo the products that already updated and abandon this change." side="top">
+                    <button
+                      onClick={onRevert}
+                      disabled={busy}
+                      className="px-4 py-2 text-sm text-red-600 border border-red-200 rounded hover:bg-red-50 disabled:opacity-40 transition-colors"
+                    >
+                      Cancel &amp; Revert
+                    </button>
+                  </Tooltip>
+                )}
+                {onRetry && (
+                  <Tooltip content="Retry only the products that failed to update." side="top">
+                    <button
+                      onClick={onRetry}
+                      disabled={busy}
+                      className="px-4 py-2 text-sm bg-gray-900 text-white rounded hover:bg-gray-700 disabled:opacity-40 transition-colors"
+                    >
+                      Retry failed ({updateResult!.failed})
+                    </button>
+                  </Tooltip>
+                )}
+              </>
             )}
             {phase === "found" && canUpdate && products.length > 0 && (
               <>
@@ -106,12 +165,12 @@ export default function AffectedProductsModal({
                     Skip
                   </button>
                 </Tooltip>
-                <Tooltip content="Push this change to all listed products at once." side="top">
+                <Tooltip content="Push this change to all listed products, then commit it." side="top">
                   <button
                     onClick={onUpdate}
                     className="px-4 py-2 text-sm bg-gray-900 text-white rounded hover:bg-gray-700 transition-colors"
                   >
-                    Update All ({products.length})
+                    Continue ({products.length})
                   </button>
                 </Tooltip>
               </>

@@ -54,7 +54,7 @@ describe("POST /api/generate-summary", () => {
     expect(body.options).toHaveLength(3);
   });
 
-  it("returns 400 when product has no type", async () => {
+  it("still generates a summary when product has no type", async () => {
     mockProduct("", "Minimal");
     const req = new NextRequest("http://localhost/api/generate-summary", {
       method: "POST",
@@ -62,10 +62,10 @@ describe("POST /api/generate-summary", () => {
       headers: { "content-type": "application/json" },
     });
     const res = await POST(req);
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(200);
   });
 
-  it("returns 400 when product has no style", async () => {
+  it("still generates a summary when product has no style", async () => {
     mockProduct("Home", "");
     const req = new NextRequest("http://localhost/api/generate-summary", {
       method: "POST",
@@ -73,7 +73,7 @@ describe("POST /api/generate-summary", () => {
       headers: { "content-type": "application/json" },
     });
     const res = await POST(req);
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(200);
   });
 
   it("returns 422 when generateProductSummary returns an error", async () => {

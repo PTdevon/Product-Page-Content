@@ -323,6 +323,36 @@ export function renameStyleInLibrary(
   });
 }
 
+// ── Type rename cascade ──────────────────────────────────────────────────────
+
+export function renameTypeInLibrary(
+  oldType: string,
+  newType: string
+): Promise<{ wctUpdated: number; pfUpdated: number }> {
+  return serialized(async () => {
+    const edits = await getLibraryEdits();
+    let wctUpdated = 0;
+    let pfUpdated = 0;
+
+    for (const entry of Object.values(edits.wct)) {
+      if (entry.productType === oldType) {
+        entry.productType = newType;
+        wctUpdated++;
+      }
+    }
+
+    for (const entry of Object.values(edits.pfApplicability)) {
+      if (entry.productType === oldType) {
+        entry.productType = newType;
+        pfUpdated++;
+      }
+    }
+
+    if (wctUpdated > 0 || pfUpdated > 0) await persist(edits);
+    return { wctUpdated, pfUpdated };
+  });
+}
+
 // ── Uploaded Icons ────────────────────────────────────────────────────────────
 
 export function updateUploadedIcons(

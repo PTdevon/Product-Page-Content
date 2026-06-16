@@ -18,6 +18,10 @@ interface DeletePhraseModalProps {
   onReplacementChange: (phraseId: string) => void;
   onConfirm: () => void;
   onCancel: () => void;
+  onRetry?: () => void;
+  onRevert?: () => void;
+  busy?: boolean;
+  reverting?: boolean;
 }
 
 export default function DeletePhraseModal({
@@ -35,6 +39,10 @@ export default function DeletePhraseModal({
   onReplacementChange,
   onConfirm,
   onCancel,
+  onRetry,
+  onRevert,
+  busy,
+  reverting,
 }: DeletePhraseModalProps) {
   const logRef = useRef<HTMLDivElement>(null);
 
@@ -44,6 +52,18 @@ export default function DeletePhraseModal({
 
   const isReplacing = actionPhase === "replacing";
   const isDone = actionPhase === "done";
+  const hasFailures = isDone && !!actionResult && actionResult.failed > 0;
+  const canRetryOrRevert = hasFailures && (onRetry || onRevert);
+
+  function handleCancel() {
+    if (canRetryOrRevert) {
+      const ok = window.confirm(
+        `${actionResult!.failed} product${actionResult!.failed !== 1 ? "s" : ""} ${actionResult!.failed !== 1 ? "are" : "is"} still left in a partially-applied state and won't be retried or reverted. Close anyway?`
+      );
+      if (!ok) return;
+    }
+    onCancel();
+  }
 
   const headerText =
     mode === "delete"
@@ -60,7 +80,7 @@ export default function DeletePhraseModal({
   return (
     <div
       className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40"
-      onClick={isReplacing ? undefined : onCancel}
+      onClick={isReplacing ? undefined : handleCancel}
     >
       <div
         className="bg-white rounded-xl shadow-2xl w-full max-w-sm mx-4 flex flex-col overflow-hidden"
@@ -70,7 +90,7 @@ export default function DeletePhraseModal({
         <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between">
           <span className="text-sm font-semibold text-gray-900">{headerText}</span>
           <button
-            onClick={onCancel}
+            onClick={handleCancel}
             disabled={isReplacing}
             className="w-7 h-7 flex items-center justify-center rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 text-lg leading-none disabled:opacity-30"
           >
@@ -132,6 +152,13 @@ export default function DeletePhraseModal({
                   {actionResult.failed > 0 && ` · ${actionResult.failed} failed`}
                 </p>
               )}
+              {hasFailures && (
+                <p className="text-amber-600 pt-1">
+                  {reverting
+                    ? `Reverting — ${actionResult!.failed} product${actionResult!.failed !== 1 ? "s" : ""} still need reverting.`
+                    : `${mode === "delete" ? "Phrase not deleted" : "Assignment not removed"} yet — ${actionResult!.failed} product${actionResult!.failed !== 1 ? "s" : ""} still need updating.`}
+                </p>
+              )}
             </>
           )}
 
@@ -143,13 +170,46 @@ export default function DeletePhraseModal({
         {/* Footer */}
         {showFooter && (
           <div className="px-5 py-3.5 border-t border-gray-100 flex items-center justify-end gap-3">
-            {(isDone || actionPhase === "error") && (
+            {(isDone || actionPhase === "error") && !canRetryOrRevert && (
               <button
                 onClick={onCancel}
                 className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded hover:bg-gray-50 transition-colors"
               >
                 Close
               </button>
+            )}
+            {canRetryOrRevert && (
+              <>
+                <button
+                  onClick={handleCancel}
+                  disabled={busy}
+                  className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-40 transition-colors"
+                >
+                  Close
+                </button>
+                {onRevert && (
+                  <Tooltip content="Undo the products that already updated and abandon this change." side="top">
+                    <button
+                      onClick={onRevert}
+                      disabled={busy}
+                      className="px-4 py-2 text-sm text-red-600 border border-red-200 rounded hover:bg-red-50 disabled:opacity-40 transition-colors"
+                    >
+                      Cancel &amp; Revert
+                    </button>
+                  </Tooltip>
+                )}
+                {onRetry && (
+                  <Tooltip content="Retry only the products that failed to update." side="top">
+                    <button
+                      onClick={onRetry}
+                      disabled={busy}
+                      className="px-4 py-2 text-sm bg-gray-900 text-white rounded hover:bg-gray-700 disabled:opacity-40 transition-colors"
+                    >
+                      Retry failed ({actionResult!.failed})
+                    </button>
+                  </Tooltip>
+                )}
+              </>
             )}
             {actionPhase === "confirm" && (
               <>

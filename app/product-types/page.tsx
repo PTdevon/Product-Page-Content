@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import Nav from "@/components/Nav";
 import { Tooltip } from "@/components/Tooltip";
 import AffectedProductsModal from "@/components/AffectedProductsModal";
+import { runCascadeStream, type CascadeProgressEvent } from "@/lib/sse-cascade";
 
 type Taxonomy = Record<string, string[]>;
 
@@ -53,7 +54,23 @@ export default function ProductTypesPage() {
   const [renameProducts, setRenameProducts] = useState<{ id: string; title: string }[]>([]);
   const [renameUpdateLog, setRenameUpdateLog] = useState<{ title: string; status: "updated" | "error" }[]>([]);
   const [renameUpdateResult, setRenameUpdateResult] = useState<{ updated: number; skipped: number; failed: number } | null>(null);
+  const [renameUpdatedIds, setRenameUpdatedIds] = useState<{ id: string; title: string }[]>([]);
+  const [renameFailedIds, setRenameFailedIds] = useState<{ id: string; title: string }[]>([]);
+  const [renameReverting, setRenameReverting] = useState(false);
+  const [renameBusy, setRenameBusy] = useState(false);
   const renameUpdatingRef = useRef(false);
+
+  // Rename type cascade modal
+  const [typeRenameTarget, setTypeRenameTarget] = useState<{ oldType: string; newType: string } | null>(null);
+  const [typeRenamePhase, setTypeRenamePhase] = useState<"finding" | "found" | "updating" | "done">("finding");
+  const [typeRenameProducts, setTypeRenameProducts] = useState<{ id: string; title: string }[]>([]);
+  const [typeRenameUpdateLog, setTypeRenameUpdateLog] = useState<{ title: string; status: "updated" | "error" }[]>([]);
+  const [typeRenameUpdateResult, setTypeRenameUpdateResult] = useState<{ updated: number; skipped: number; failed: number } | null>(null);
+  const [typeRenameUpdatedIds, setTypeRenameUpdatedIds] = useState<{ id: string; title: string }[]>([]);
+  const [typeRenameFailedIds, setTypeRenameFailedIds] = useState<{ id: string; title: string }[]>([]);
+  const [typeRenameReverting, setTypeRenameReverting] = useState(false);
+  const [typeRenameBusy, setTypeRenameBusy] = useState(false);
+  const typeRenameUpdatingRef = useRef(false);
 
   useEffect(() => {
     fetch("/api/taxonomy")
@@ -89,17 +106,50 @@ export default function ProductTypesPage() {
     setAddingType(false);
   }
 
+  function renamedTaxonomyKey(oldType: string, newType: string): Taxonomy {
+    const next: Taxonomy = {};
+    for (const [k, v] of Object.entries(taxonomy)) {
+      next[k === oldType ? newType : k] = v;
+    }
+    return next;
+  }
+
   function saveTypeEdit() {
     const name = editTypeName.trim();
     if (!name || !editingType) return;
     if (name === editingType) { setEditingType(null); return; }
     if (taxonomy[name]) return; // already exists
-    const next: Taxonomy = {};
-    for (const [k, v] of Object.entries(taxonomy)) {
-      next[k === editingType ? name : k] = v;
-    }
-    persist(next);
+    const oldType = editingType;
     setEditingType(null);
+
+    setTypeRenameTarget({ oldType, newType: name });
+    setTypeRenamePhase("finding");
+    setTypeRenameProducts([]);
+    setTypeRenameUpdateLog([]);
+    setTypeRenameUpdateResult(null);
+    setTypeRenameUpdatedIds([]);
+    setTypeRenameFailedIds([]);
+    setTypeRenameReverting(false);
+
+    fetch(`/api/taxonomy/usage?type=${encodeURIComponent(oldType)}`)
+      .then((r) => r.json())
+      .then((d) => {
+        const titles: string[] = d.products ?? [];
+        if (titles.length === 0) {
+          // No products — still need to update library entries silently
+          fetch("/api/taxonomy/rename-type", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ oldType, newType: name }),
+          }).catch(() => {});
+          persist(renamedTaxonomyKey(oldType, name));
+          setTypeRenameTarget(null);
+        } else {
+          setTypeRenameProducts(titles.map((t) => ({ id: t, title: t })));
+          setTypeRenamePhase("found");
+        }
+      })
+      .catch(() => setTypeRenameTarget(null));
   }
 
   function confirmDeleteType(type: string) {
@@ -144,6 +194,9 @@ export default function ProductTypesPage() {
     setRenameProducts([]);
     setRenameUpdateLog([]);
     setRenameUpdateResult(null);
+    setRenameUpdatedIds([]);
+    setRenameFailedIds([]);
+    setRenameReverting(false);
 
     fetch(`/api/taxonomy/usage?type=${encodeURIComponent(type)}&style=${encodeURIComponent(style)}`)
       .then((r) => r.json())
@@ -166,59 +219,104 @@ export default function ProductTypesPage() {
       .catch(() => setRenameTarget(null));
   }
 
+  function runRenameCascade(
+    body: Record<string, unknown>,
+    onProgress: (ev: CascadeProgressEvent) => void
+  ): Promise<{ failed: number; receivedDone: boolean }> {
+    return runCascadeStream("/api/taxonomy/rename-style", body, onProgress);
+  }
+
   async function handleRenameUpdate() {
     if (!renameTarget || renameUpdatingRef.current) return;
     renameUpdatingRef.current = true;
     setRenamePhase("updating");
     setRenameUpdateLog([]);
     setRenameUpdateResult(null);
+    setRenameReverting(false);
 
     const { type, oldStyle, newStyle } = renameTarget;
-    const nextTaxonomy = { ...taxonomy, [type]: taxonomy[type].map((s) => (s === oldStyle ? newStyle : s)) };
+    const updatedIds: { id: string; title: string }[] = [];
+    const failedIds: { id: string; title: string }[] = [];
 
-    const res = await fetch("/api/taxonomy/rename-style", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type, oldStyle, newStyle }),
+    const { receivedDone } = await runRenameCascade({ type, oldStyle, newStyle }, (ev) => {
+      setRenameUpdateLog((prev) => [...prev, { title: ev.title, status: ev.status }]);
+      if (!ev.id) return;
+      (ev.status === "updated" ? updatedIds : failedIds).push({ id: ev.id, title: ev.title });
     });
 
-    if (!res.ok || !res.body) {
-      renameUpdatingRef.current = false;
-      setRenamePhase("found");
-      return;
+    renameUpdatingRef.current = false;
+    setRenameUpdatedIds(updatedIds);
+    setRenameFailedIds(failedIds);
+    setRenameUpdateResult({ updated: updatedIds.length, skipped: 0, failed: failedIds.length });
+
+    if (!receivedDone) { setRenamePhase("found"); return; }
+    setRenamePhase("done");
+    if (failedIds.length === 0) {
+      await persist({ ...taxonomy, [type]: taxonomy[type].map((s) => (s === oldStyle ? newStyle : s)) });
     }
+  }
 
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let receivedDone = false;
+  async function retryRenameUpdate() {
+    if (!renameTarget || renameFailedIds.length === 0 || renameBusy) return;
+    setRenameBusy(true);
+    setRenameUpdateLog([]);
 
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          try {
-            const event = JSON.parse(line.slice(6));
-            if (event.type === "progress") {
-              setRenameUpdateLog((prev) => [...prev, { title: event.title, status: event.status }]);
-            } else if (event.type === "done") {
-              setRenameUpdateResult({ updated: event.updated, skipped: 0, failed: event.failed });
-              setRenamePhase("done");
-              receivedDone = true;
-            }
-          } catch { /* ignore */ }
-        }
-        if (receivedDone) break;
+    const { type, oldStyle, newStyle } = renameTarget;
+    const [fromStyle, toStyle] = renameReverting ? [newStyle, oldStyle] : [oldStyle, newStyle];
+    const newUpdated: { id: string; title: string }[] = [];
+    const stillFailed: { id: string; title: string }[] = [];
+
+    await runRenameCascade(
+      { type, oldStyle: fromStyle, newStyle: toStyle, retryIds: renameFailedIds.map((p) => p.id), skipLibrary: true },
+      (ev) => {
+        setRenameUpdateLog((prev) => [...prev, { title: ev.title, status: ev.status }]);
+        if (!ev.id) return;
+        (ev.status === "updated" ? newUpdated : stillFailed).push({ id: ev.id, title: ev.title });
       }
-    } catch { /* network error */ } finally { renameUpdatingRef.current = false; }
+    );
 
-    await persist(nextTaxonomy);
-    if (!receivedDone) setRenamePhase("found");
+    const mergedUpdated = [...renameUpdatedIds, ...newUpdated];
+    setRenameUpdatedIds(mergedUpdated);
+    setRenameFailedIds(stillFailed);
+    setRenameUpdateResult({ updated: mergedUpdated.length, skipped: 0, failed: stillFailed.length });
+    setRenameBusy(false);
+
+    if (stillFailed.length > 0) return;
+
+    if (renameReverting) {
+      setRenameTarget(null);
+    } else {
+      await persist({ ...taxonomy, [type]: taxonomy[type].map((s) => (s === oldStyle ? newStyle : s)) });
+    }
+  }
+
+  async function cancelAndRevertRenameUpdate() {
+    if (!renameTarget || renameBusy) return;
+    if (renameUpdatedIds.length === 0) { setRenameTarget(null); return; }
+
+    setRenameBusy(true);
+    setRenameReverting(true);
+    setRenameUpdateLog([]);
+
+    const { type, oldStyle, newStyle } = renameTarget;
+    const newUpdated: { id: string; title: string }[] = [];
+    const stillFailed: { id: string; title: string }[] = [];
+
+    await runRenameCascade(
+      { type, oldStyle: newStyle, newStyle: oldStyle, retryIds: renameUpdatedIds.map((p) => p.id), skipLibrary: false },
+      (ev) => {
+        setRenameUpdateLog((prev) => [...prev, { title: ev.title, status: ev.status }]);
+        if (!ev.id) return;
+        (ev.status === "updated" ? newUpdated : stillFailed).push({ id: ev.id, title: ev.title });
+      }
+    );
+
+    setRenameUpdatedIds(stillFailed);
+    setRenameFailedIds(stillFailed);
+    setRenameUpdateResult({ updated: newUpdated.length, skipped: 0, failed: stillFailed.length });
+    setRenameBusy(false);
+
+    if (stillFailed.length === 0) setRenameTarget(null);
   }
 
   function dismissRenameModal() {
@@ -228,6 +326,115 @@ export default function ProductTypesPage() {
       persist({ ...taxonomy, [type]: taxonomy[type].map((s) => (s === oldStyle ? newStyle : s)) });
     }
     setRenameTarget(null);
+  }
+
+  function runTypeRenameCascade(
+    body: Record<string, unknown>,
+    onProgress: (ev: CascadeProgressEvent) => void
+  ): Promise<{ failed: number; receivedDone: boolean }> {
+    return runCascadeStream("/api/taxonomy/rename-type", body, onProgress);
+  }
+
+  async function handleTypeRenameUpdate() {
+    if (!typeRenameTarget || typeRenameUpdatingRef.current) return;
+    typeRenameUpdatingRef.current = true;
+    setTypeRenamePhase("updating");
+    setTypeRenameUpdateLog([]);
+    setTypeRenameUpdateResult(null);
+    setTypeRenameReverting(false);
+
+    const { oldType, newType } = typeRenameTarget;
+    const updatedIds: { id: string; title: string }[] = [];
+    const failedIds: { id: string; title: string }[] = [];
+
+    const { receivedDone } = await runTypeRenameCascade({ oldType, newType }, (ev) => {
+      setTypeRenameUpdateLog((prev) => [...prev, { title: ev.title, status: ev.status }]);
+      if (!ev.id) return;
+      (ev.status === "updated" ? updatedIds : failedIds).push({ id: ev.id, title: ev.title });
+    });
+
+    typeRenameUpdatingRef.current = false;
+    setTypeRenameUpdatedIds(updatedIds);
+    setTypeRenameFailedIds(failedIds);
+    setTypeRenameUpdateResult({ updated: updatedIds.length, skipped: 0, failed: failedIds.length });
+
+    if (!receivedDone) { setTypeRenamePhase("found"); return; }
+    setTypeRenamePhase("done");
+    if (failedIds.length === 0) {
+      await persist(renamedTaxonomyKey(oldType, newType));
+    }
+  }
+
+  async function retryTypeRenameUpdate() {
+    if (!typeRenameTarget || typeRenameFailedIds.length === 0 || typeRenameBusy) return;
+    setTypeRenameBusy(true);
+    setTypeRenameUpdateLog([]);
+
+    const { oldType, newType } = typeRenameTarget;
+    const [fromType, toType] = typeRenameReverting ? [newType, oldType] : [oldType, newType];
+    const newUpdated: { id: string; title: string }[] = [];
+    const stillFailed: { id: string; title: string }[] = [];
+
+    await runTypeRenameCascade(
+      { oldType: fromType, newType: toType, retryIds: typeRenameFailedIds.map((p) => p.id), skipLibrary: true },
+      (ev) => {
+        setTypeRenameUpdateLog((prev) => [...prev, { title: ev.title, status: ev.status }]);
+        if (!ev.id) return;
+        (ev.status === "updated" ? newUpdated : stillFailed).push({ id: ev.id, title: ev.title });
+      }
+    );
+
+    const mergedUpdated = [...typeRenameUpdatedIds, ...newUpdated];
+    setTypeRenameUpdatedIds(mergedUpdated);
+    setTypeRenameFailedIds(stillFailed);
+    setTypeRenameUpdateResult({ updated: mergedUpdated.length, skipped: 0, failed: stillFailed.length });
+    setTypeRenameBusy(false);
+
+    if (stillFailed.length > 0) return;
+
+    if (typeRenameReverting) {
+      setTypeRenameTarget(null);
+    } else {
+      await persist(renamedTaxonomyKey(oldType, newType));
+    }
+  }
+
+  async function cancelAndRevertTypeRenameUpdate() {
+    if (!typeRenameTarget || typeRenameBusy) return;
+    if (typeRenameUpdatedIds.length === 0) { setTypeRenameTarget(null); return; }
+
+    setTypeRenameBusy(true);
+    setTypeRenameReverting(true);
+    setTypeRenameUpdateLog([]);
+
+    const { oldType, newType } = typeRenameTarget;
+    const newUpdated: { id: string; title: string }[] = [];
+    const stillFailed: { id: string; title: string }[] = [];
+
+    await runTypeRenameCascade(
+      { oldType: newType, newType: oldType, retryIds: typeRenameUpdatedIds.map((p) => p.id), skipLibrary: false },
+      (ev) => {
+        setTypeRenameUpdateLog((prev) => [...prev, { title: ev.title, status: ev.status }]);
+        if (!ev.id) return;
+        (ev.status === "updated" ? newUpdated : stillFailed).push({ id: ev.id, title: ev.title });
+      }
+    );
+
+    setTypeRenameUpdatedIds(stillFailed);
+    setTypeRenameFailedIds(stillFailed);
+    setTypeRenameUpdateResult({ updated: newUpdated.length, skipped: 0, failed: stillFailed.length });
+    setTypeRenameBusy(false);
+
+    if (stillFailed.length === 0) setTypeRenameTarget(null);
+  }
+
+  function dismissTypeRenameModal() {
+    if (typeRenameTarget && typeRenamePhase === "found") {
+      // User skipped updating products — still rename in taxonomy
+      const { oldType, newType } = typeRenameTarget;
+      persist(renamedTaxonomyKey(oldType, newType));
+    }
+    setTypeRenameTarget(null);
   }
 
   function confirmDeleteStyle(type: string, style: string) {
@@ -501,6 +708,36 @@ export default function ProductTypesPage() {
           canUpdate={true}
           onUpdate={handleRenameUpdate}
           onDismiss={dismissRenameModal}
+          onRetry={renameFailedIds.length > 0 ? retryRenameUpdate : undefined}
+          onRevert={!renameReverting && renameUpdatedIds.length > 0 ? cancelAndRevertRenameUpdate : undefined}
+          busy={renameBusy}
+          notCommittedMessage={
+            renameReverting
+              ? `Reverting — ${renameFailedIds.length} product${renameFailedIds.length !== 1 ? "s" : ""} still need reverting.`
+              : `Style not renamed yet — ${renameFailedIds.length} product${renameFailedIds.length !== 1 ? "s" : ""} still need updating.`
+          }
+        />
+      )}
+
+      {/* Rename type cascade modal */}
+      {typeRenameTarget && typeRenamePhase !== "finding" && (
+        <AffectedProductsModal
+          title={`Rename type: ${typeRenameTarget.oldType} → ${typeRenameTarget.newType}`}
+          phase={typeRenamePhase}
+          products={typeRenameProducts}
+          updateLog={typeRenameUpdateLog}
+          updateResult={typeRenameUpdateResult}
+          canUpdate={true}
+          onUpdate={handleTypeRenameUpdate}
+          onDismiss={dismissTypeRenameModal}
+          onRetry={typeRenameFailedIds.length > 0 ? retryTypeRenameUpdate : undefined}
+          onRevert={!typeRenameReverting && typeRenameUpdatedIds.length > 0 ? cancelAndRevertTypeRenameUpdate : undefined}
+          busy={typeRenameBusy}
+          notCommittedMessage={
+            typeRenameReverting
+              ? `Reverting — ${typeRenameFailedIds.length} product${typeRenameFailedIds.length !== 1 ? "s" : ""} still need reverting.`
+              : `Type not renamed yet — ${typeRenameFailedIds.length} product${typeRenameFailedIds.length !== 1 ? "s" : ""} still need updating.`
+          }
         />
       )}
     </div>

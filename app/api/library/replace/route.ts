@@ -31,6 +31,22 @@ const SCAN_QUERY = `
   }
 `;
 
+const NODES_QUERY = `
+  query($ids: [ID!]!) {
+    nodes(ids: $ids) {
+      ... on Product {
+        id title
+        typePt:  metafield(namespace: "product", key: "product_type")  { value }
+        stylePt: metafield(namespace: "product", key: "product_style") { value }
+        pf1: metafield(namespace: "perfect-for", key: "perfect_bullet_1") { value }
+        pf2: metafield(namespace: "perfect-for", key: "perfect_bullet_2") { value }
+        pf3: metafield(namespace: "perfect-for", key: "perfect_bullet_3") { value }
+        pf4: metafield(namespace: "perfect-for", key: "perfect_bullet_4") { value }
+      }
+    }
+  }
+`;
+
 type MF = { value: string } | null;
 type ScanNode = {
   id: string; title: string;
@@ -40,6 +56,7 @@ type ScanNode = {
 type ScanResult = {
   products: { edges: { node: ScanNode; cursor: string }[]; pageInfo: { hasNextPage: boolean } };
 };
+type NodesResult = { nodes: (ScanNode | null)[] };
 
 // Finds the best phrase from the library that is applicable to the product's type/style
 // and doesn't duplicate any of the bullets the product will keep.
@@ -66,14 +83,16 @@ export async function POST(req: NextRequest) {
   const authError = await requireAuth(req);
   if (authError) return authError;
 
-  const { oldPhrase, newPhrase, productType, productStyle } = await req.json() as {
+  const { oldPhrase, newPhrase, productType, productStyle, retryIds, revert } = await req.json() as {
     oldPhrase: string;
     newPhrase: string;
     productType?: string;
     productStyle?: string;
+    retryIds?: string[];
+    revert?: { id: string; bullets: string[] }[];
   };
 
-  if (!oldPhrase || !newPhrase) {
+  if (!revert && (!oldPhrase || !newPhrase)) {
     return new Response(JSON.stringify({ error: "oldPhrase and newPhrase required" }), { status: 400 });
   }
 
@@ -84,67 +103,95 @@ export async function POST(req: NextRequest) {
       const send = (data: object) =>
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
 
+      // ── Revert mode: restore exact prior bullet values, no matching logic ──────
+      if (revert) {
+        let updated = 0;
+        let failed = 0;
+        for (const { id, bullets } of revert) {
+          try {
+            await setProductMetafields(id, {
+              perfectFor: { bullet1: bullets[0], bullet2: bullets[1], bullet3: bullets[2], bullet4: bullets[3] },
+            });
+            updated++;
+            send({ type: "progress", id, title: id, status: "updated" });
+          } catch {
+            failed++;
+            send({ type: "progress", id, title: id, status: "error" });
+          }
+        }
+        send({ type: "done", total: revert.length, updated, swapped: updated, alternated: 0, skipped: 0, failed });
+        controller.close();
+        return;
+      }
+
       let swapped = 0;      // received the chosen newPhrase
       let alternated = 0;  // duplicate detected — received a library alternative instead
       let skipped = 0;
       let failed = 0;
-      let cursor: string | null = null;
       // Loaded lazily — only if a duplicate case is encountered
       let pfLibrary: PerfectForEntry[] | null = null;
 
-      while (true) {
-        const data: ScanResult = await shopifyGraphQL<ScanResult>(SCAN_QUERY, { first: 250, after: cursor });
+      const process = async (node: ScanNode) => {
+        const nodeType = node.typePt?.value ?? "";
+        const nodeStyle = node.stylePt?.value ?? "";
 
-        for (const { node } of data.products.edges) {
-          const nodeType = node.typePt?.value ?? "";
-          const nodeStyle = node.stylePt?.value ?? "";
-
-          // Apply type/style filter if specified
-          if (productType && nodeType !== productType) { skipped++; continue; }
-          if (productStyle && productStyle !== "ALL") {
-            const styles = nodeStyle.split(",").map((s: string) => s.trim());
-            if (!styles.includes(productStyle)) { skipped++; continue; }
-          }
-
-          const bullets = [
-            node.pf1?.value ?? "", node.pf2?.value ?? "",
-            node.pf3?.value ?? "", node.pf4?.value ?? "",
-          ];
-
-          if (!bullets.some((b) => b === oldPhrase)) { skipped++; continue; }
-
-          // Determine the effective replacement phrase for this product
-          let effectiveNew = newPhrase;
-          if (bullets.some((b) => b === newPhrase)) {
-            // newPhrase already present — find an alternative from the library
-            if (!pfLibrary) pfLibrary = await getPfLibrary();
-            const productStyles = nodeStyle.split(",").map((s: string) => s.trim());
-            // Exclude: old phrase, new phrase, and every bullet the product will keep
-            const excluded = new Set(bullets.filter((b) => b !== oldPhrase && b !== ""));
-            excluded.add(oldPhrase);
-            const alt = pickAlternative(pfLibrary, nodeType, productStyles, excluded);
-            if (!alt) { skipped++; continue; } // no valid alternative — leave this product alone
-            effectiveNew = alt;
-          }
-
-          try {
-            const newBullets = bullets.map((b) => b === oldPhrase ? effectiveNew : b);
-            await setProductMetafields(node.id, {
-              perfectFor: {
-                bullet1: newBullets[0], bullet2: newBullets[1],
-                bullet3: newBullets[2], bullet4: newBullets[3],
-              },
-            });
-            if (effectiveNew === newPhrase) swapped++; else alternated++;
-            send({ type: "progress", title: node.title, status: "updated" });
-          } catch {
-            failed++;
-            send({ type: "progress", title: node.title, status: "error" });
-          }
+        // Apply type/style filter if specified
+        if (productType && nodeType !== productType) { skipped++; return; }
+        if (productStyle && productStyle !== "ALL") {
+          const styles = nodeStyle.split(",").map((s: string) => s.trim());
+          if (!styles.includes(productStyle)) { skipped++; return; }
         }
 
-        if (!data.products.pageInfo.hasNextPage) break;
-        cursor = data.products.edges[data.products.edges.length - 1]?.cursor ?? null;
+        const bullets = [
+          node.pf1?.value ?? "", node.pf2?.value ?? "",
+          node.pf3?.value ?? "", node.pf4?.value ?? "",
+        ];
+
+        if (!bullets.some((b) => b === oldPhrase)) { skipped++; return; }
+
+        // Determine the effective replacement phrase for this product
+        let effectiveNew = newPhrase;
+        if (bullets.some((b) => b === newPhrase)) {
+          // newPhrase already present — find an alternative from the library
+          if (!pfLibrary) pfLibrary = await getPfLibrary();
+          const productStyles = nodeStyle.split(",").map((s: string) => s.trim());
+          // Exclude: old phrase, new phrase, and every bullet the product will keep
+          const excluded = new Set(bullets.filter((b) => b !== oldPhrase && b !== ""));
+          excluded.add(oldPhrase);
+          const alt = pickAlternative(pfLibrary, nodeType, productStyles, excluded);
+          if (!alt) { skipped++; return; } // no valid alternative — leave this product alone
+          effectiveNew = alt;
+        }
+
+        try {
+          const newBullets = bullets.map((b) => b === oldPhrase ? effectiveNew : b);
+          await setProductMetafields(node.id, {
+            perfectFor: {
+              bullet1: newBullets[0], bullet2: newBullets[1],
+              bullet3: newBullets[2], bullet4: newBullets[3],
+            },
+          });
+          if (effectiveNew === newPhrase) swapped++; else alternated++;
+          send({ type: "progress", id: node.id, title: node.title, status: "updated", originalBullets: bullets });
+        } catch {
+          failed++;
+          send({ type: "progress", id: node.id, title: node.title, status: "error", originalBullets: bullets });
+        }
+      };
+
+      if (retryIds && retryIds.length > 0) {
+        const data = await shopifyGraphQL<NodesResult>(NODES_QUERY, { ids: retryIds });
+        for (const node of data.nodes) {
+          if (node) await process(node);
+        }
+      } else {
+        let cursor: string | null = null;
+        while (true) {
+          const data: ScanResult = await shopifyGraphQL<ScanResult>(SCAN_QUERY, { first: 250, after: cursor });
+          for (const { node } of data.products.edges) await process(node);
+          if (!data.products.pageInfo.hasNextPage) break;
+          cursor = data.products.edges[data.products.edges.length - 1]?.cursor ?? null;
+        }
       }
 
       const updated = swapped + alternated;

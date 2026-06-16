@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { shopifyGraphQL } from "@/lib/shopify";
 import { setProductMetafields } from "@/lib/metafields";
-import { renameStyleInLibrary } from "@/lib/library-edits-store";
+import { renameTypeInLibrary } from "@/lib/library-edits-store";
 
 const QUERY = `
   query($first: Int!, $after: String) {
@@ -11,8 +11,7 @@ const QUERY = `
         node {
           id
           title
-          productTypePt:  metafield(namespace: "product", key: "product_type")  { value }
-          productStylePt: metafield(namespace: "product", key: "product_style") { value }
+          productTypePt: metafield(namespace: "product", key: "product_type") { value }
         }
         cursor
       }
@@ -27,15 +26,14 @@ const NODES_QUERY = `
       ... on Product {
         id
         title
-        productTypePt:  metafield(namespace: "product", key: "product_type")  { value }
-        productStylePt: metafield(namespace: "product", key: "product_style") { value }
+        productTypePt: metafield(namespace: "product", key: "product_type") { value }
       }
     }
   }
 `;
 
 type MF = { value: string } | null;
-type Row = { id: string; title: string; productTypePt: MF; productStylePt: MF };
+type Row = { id: string; title: string; productTypePt: MF };
 type Result = { products: { edges: { node: Row; cursor: string }[]; pageInfo: { hasNextPage: boolean } } };
 type NodesResult = { nodes: (Row | null)[] };
 
@@ -43,15 +41,14 @@ export async function POST(req: NextRequest) {
   const authError = await requireAuth(req);
   if (authError) return authError;
 
-  const { type, oldStyle, newStyle, retryIds, skipLibrary } = await req.json() as {
-    type: string;
-    oldStyle: string;
-    newStyle: string;
+  const { oldType, newType, retryIds, skipLibrary } = await req.json() as {
+    oldType: string;
+    newType: string;
     retryIds?: string[];
     skipLibrary?: boolean;
   };
-  if (!oldStyle || !newStyle) {
-    return new Response(JSON.stringify({ error: "oldStyle and newStyle are required" }), { status: 400 });
+  if (!oldType || !newType) {
+    return new Response(JSON.stringify({ error: "oldType and newType are required" }), { status: 400 });
   }
 
   const encoder = new TextEncoder();
@@ -63,14 +60,14 @@ export async function POST(req: NextRequest) {
       };
 
       // Collect affected products
-      const targets: { id: string; title: string; currentStyle: string }[] = [];
+      const targets: { id: string; title: string }[] = [];
 
       try {
         if (retryIds && retryIds.length > 0) {
           const data = await shopifyGraphQL<NodesResult>(NODES_QUERY, { ids: retryIds });
           for (const node of data.nodes) {
             if (!node) continue;
-            targets.push({ id: node.id, title: node.title, currentStyle: node.productStylePt?.value ?? "" });
+            targets.push({ id: node.id, title: node.title });
           }
         } else {
           let cursor: string | null = null;
@@ -79,11 +76,8 @@ export async function POST(req: NextRequest) {
             const data: Result = await shopifyGraphQL<Result>(QUERY, { first: 250, after: cursor });
             for (const { node } of data.products.edges) {
               const nodeType = node.productTypePt?.value ?? "";
-              const nodeStyle = node.productStylePt?.value ?? "";
-              if (type && nodeType !== type) continue;
-              const styles = nodeStyle.split(",").map((s) => s.trim());
-              if (!styles.includes(oldStyle)) continue;
-              targets.push({ id: node.id, title: node.title, currentStyle: nodeStyle });
+              if (nodeType !== oldType) continue;
+              targets.push({ id: node.id, title: node.title });
             }
             hasMore = data.products.pageInfo.hasNextPage;
             if (hasMore && data.products.edges.length > 0) {
@@ -100,7 +94,7 @@ export async function POST(req: NextRequest) {
       // Update library entries first
       if (!skipLibrary) {
         try {
-          const { wctUpdated, pfUpdated } = await renameStyleInLibrary(type, oldStyle, newStyle);
+          const { wctUpdated, pfUpdated } = await renameTypeInLibrary(oldType, newType);
           if (wctUpdated > 0 || pfUpdated > 0) {
             const parts = [];
             if (wctUpdated > 0) parts.push(`${wctUpdated} Why Choose This`);
@@ -115,14 +109,9 @@ export async function POST(req: NextRequest) {
       let updated = 0;
       let failed = 0;
 
-      for (const { id, title, currentStyle } of targets) {
+      for (const { id, title } of targets) {
         try {
-          const newStyleValue = currentStyle
-            .split(",")
-            .map((s) => s.trim())
-            .map((s) => (s === oldStyle ? newStyle : s))
-            .join(",");
-          await setProductMetafields(id, { productStylePt: newStyleValue });
+          await setProductMetafields(id, { productTypePt: newType });
           updated++;
           send({ type: "progress", id, title, status: "updated" });
         } catch {
