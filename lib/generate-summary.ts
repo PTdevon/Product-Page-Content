@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { isCreditsExhaustedError } from "./anthropic-errors";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -98,7 +99,6 @@ Write exactly 3 distinct product summary options for this product. Number them 1
   } catch (err: unknown) {
     const e = err as { status?: number; error?: { type?: string }; code?: string; message?: string };
     const status = e?.status;
-    const errorType = e?.error?.type;
     const isNetworkError = e?.code === "ECONNREFUSED" || e?.code === "ENOTFOUND" || e?.code === "ETIMEDOUT" || e?.message?.includes("fetch");
 
     if (isNetworkError) {
@@ -106,7 +106,7 @@ Write exactly 3 distinct product summary options for this product. Number them 1
         error: { type: "unknown", message: "Unable to connect to Anthropic. Check your internet connection and try again." },
       };
     }
-    if (status === 402 || errorType === "credit_balance_too_low") {
+    if (isCreditsExhaustedError(err)) {
       return {
         error: {
           type: "credits_exhausted",

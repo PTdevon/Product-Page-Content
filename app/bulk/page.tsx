@@ -395,6 +395,7 @@ export default function BulkPage() {
         try {
           const event = JSON.parse(line.slice(6));
           if (event.type === "result") {
+            if (event.errorType === "credits_exhausted") signalCreditsExhausted();
             setClassifyRows((prev) => [
               ...prev,
               {
@@ -419,6 +420,7 @@ export default function BulkPage() {
                 classifyPanelRef.current.scrollTop = classifyPanelRef.current.scrollHeight;
             }, 0);
           } else if (event.type === "done") {
+            if (event.creditsExhausted) signalCreditsExhausted();
             setClassifyPhase("review");
           }
         } catch { /* ignore */ }
@@ -467,6 +469,7 @@ export default function BulkPage() {
           try {
             const event = JSON.parse(line.slice(6));
             if (event.type === "result") {
+              if (event.errorType === "credits_exhausted") signalCreditsExhausted();
               setClassifyRows((rows) => rows.map((r) =>
                 r.productId !== event.productId ? r : event.error ? {
                   ...r,

@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { requireAuth } from "@/lib/auth";
 import { getProductWithMetafields } from "@/lib/metafields";
 import { getTaxonomy } from "@/lib/taxonomy-store";
+import { isCreditsExhaustedError } from "@/lib/anthropic-errors";
 
 function buildSystemPrompt(taxonomy: Record<string, string[]>): string {
   const lines = Object.entries(taxonomy)
@@ -44,6 +45,13 @@ function extractJsonObject(text: string): string | null {
   return null;
 }
 
+function classifyAnthropicError(err: unknown): { message: string; errorType?: "credits_exhausted" } {
+  if (isCreditsExhaustedError(err)) {
+    return { message: "Your Anthropic account has run out of credits.", errorType: "credits_exhausted" };
+  }
+  return { message: err instanceof Error ? err.message : "Classification failed" };
+}
+
 async function classifyProduct(
   client: Anthropic,
   gid: string,
@@ -57,6 +65,7 @@ async function classifyProduct(
   suggestedType: string;
   suggestedStyles: string[];
   error?: string;
+  errorType?: "credits_exhausted";
 }> {
   const { product, metafields } = await getProductWithMetafields(gid);
   const imageUrl = product.featuredImage?.url ?? null;
@@ -95,7 +104,7 @@ Classify this product.`;
       suggestedStyles: validStyles,
     };
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Classification failed";
+    const { message, errorType } = classifyAnthropicError(err);
     return {
       title: product.title,
       imageUrl,
@@ -104,6 +113,7 @@ Classify this product.`;
       suggestedType: "",
       suggestedStyles: [],
       error: message,
+      ...(errorType && { errorType }),
     };
   }
 }
@@ -148,6 +158,7 @@ export async function POST(req: NextRequest) {
 
       let succeeded = 0;
       let failed = 0;
+      let creditsExhausted = false;
 
       for (const productId of productIds) {
         try {
@@ -158,15 +169,25 @@ export async function POST(req: NextRequest) {
             succeeded++;
           }
           send({ type: "result", productId, ...result });
+          if (result.errorType === "credits_exhausted") {
+            creditsExhausted = true;
+            failed += productIds.length - (succeeded + failed);
+            break;
+          }
         } catch (err) {
           failed++;
-          const message = err instanceof Error ? err.message : "Failed to fetch product";
+          const { message, errorType } = classifyAnthropicError(err);
           send({ type: "result", productId, title: productId, imageUrl: null, suggestedType: "", suggestedStyles: [],
-            existingType: "", existingStyle: "", error: message });
+            existingType: "", existingStyle: "", error: message, ...(errorType && { errorType }) });
+          if (errorType === "credits_exhausted") {
+            creditsExhausted = true;
+            failed += productIds.length - (succeeded + failed);
+            break;
+          }
         }
       }
 
-      send({ type: "done", total: productIds.length, succeeded, failed });
+      send({ type: "done", total: productIds.length, succeeded, failed, ...(creditsExhausted && { creditsExhausted }) });
       controller.close();
     },
   });

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import Anthropic from "@anthropic-ai/sdk";
 import type { QualityRow, QualityIssue } from "@/lib/content-quality-checks";
+import { isCreditsExhaustedError } from "@/lib/anthropic-errors";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -120,7 +121,7 @@ export async function POST(req: NextRequest) {
       }
     } catch (err: unknown) {
       const e = err as { status?: number; error?: { type?: string } };
-      if (e?.status === 402 || e?.error?.type === "credit_balance_too_low") {
+      if (isCreditsExhaustedError(err)) {
         return NextResponse.json({ results, creditsExhausted: true, error: "Your Anthropic account has run out of credits." });
       }
       if (e?.status === 429) {
