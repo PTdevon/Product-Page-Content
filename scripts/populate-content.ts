@@ -39,6 +39,7 @@ const SCAN_QUERY = `
         node {
           id
           title
+          tags
           descriptionHtml
           priceRangeV2 { minVariantPrice { amount } }
           productTypePt:  metafield(namespace: "product",         key: "product_type")      { value }
@@ -57,6 +58,7 @@ type MF = { value: string } | null;
 type Product = {
   id: string;
   title: string;
+  tags: string[];
   descriptionHtml: string;
   priceRangeV2: { minVariantPrice: { amount: string } } | null;
   productTypePt: MF;
@@ -112,10 +114,12 @@ async function main() {
         seasonalVdPhrase: null,
       });
 
-      if (cs !== "complete" || contentSt === "complete" || node.humanReviewed?.value === "true") {
-        totalSkipped++;
-        continue;
-      }
+      const isChristmas = node.tags.includes("christmas");
+
+      // Must have type + style set, and not yet approved
+      if (cs !== "complete" || node.humanReviewed?.value === "true") { totalSkipped++; continue; }
+      // Christmas: only needs a summary; regular: needs full content
+      if (isChristmas ? !!node.productSummary?.value : contentSt === "complete") { totalSkipped++; continue; }
 
       eligible.push(node);
       if (LIMIT !== undefined && eligible.length >= LIMIT) break;
@@ -154,6 +158,7 @@ async function main() {
       continue;
     }
 
+    const isChristmas = product.tags.includes("christmas");
     const type = product.productTypePt!.value;
     const styles = product.productStylePt!.value.split(",").map((s) => s.trim()).filter(Boolean);
     const price = parseFloat(product.priceRangeV2?.minVariantPrice?.amount ?? "0") || 0;
@@ -166,8 +171,8 @@ async function main() {
       price,
     };
 
-    const wct = assignWhyChooseThis(ctx, wctLibrary);
-    const pf = assignPerfectFor(ctx, pfLibrary, settings.dateRanges, today, undefined, undefined, settings.interestKeywords);
+    const wct = isChristmas ? null : assignWhyChooseThis(ctx, wctLibrary);
+    const pf  = isChristmas ? null : assignPerfectFor(ctx, pfLibrary, settings.dateRanges, today, undefined, undefined, settings.interestKeywords);
 
     let summaryText: string | undefined;
     const RETRY_DELAYS_MS = [5000, 15000, 30000];
@@ -218,20 +223,22 @@ async function main() {
       await setProductMetafields(product.id, {
         productSummary: summaryText,
         humanReviewed: "false",
-        whyChooseThis: wct,
-        perfectFor: {
-          bullet1: pf.bullets[0] ?? "",
-          bullet2: pf.bullets[1] ?? "",
-          bullet3: pf.bullets[2] ?? "",
-          bullet4: pf.bullets[3] ?? "",
-          icon1: pf.icons[0] ?? "",
-          icon2: pf.icons[1] ?? "",
-          icon3: pf.icons[2] ?? "",
-          icon4: pf.icons[3] ?? "",
-        },
+        ...(isChristmas ? {} : {
+          whyChooseThis: wct!,
+          perfectFor: {
+            bullet1: pf!.bullets[0] ?? "",
+            bullet2: pf!.bullets[1] ?? "",
+            bullet3: pf!.bullets[2] ?? "",
+            bullet4: pf!.bullets[3] ?? "",
+            icon1: pf!.icons[0] ?? "",
+            icon2: pf!.icons[1] ?? "",
+            icon3: pf!.icons[2] ?? "",
+            icon4: pf!.icons[3] ?? "",
+          },
+        }),
       });
       succeeded++;
-      console.log(`  ✓ Populated: ${product.title}`);
+      console.log(`  ✓ Populated: ${product.title}${isChristmas ? " (summary only)" : ""}`);
     } catch (err) {
       failed++;
       const message = err instanceof Error ? err.message : "Unknown error";
