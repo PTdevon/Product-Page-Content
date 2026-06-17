@@ -25,6 +25,7 @@ import { getSettings } from "../lib/settings-store";
 import { getPfLibrary } from "../lib/pf-store";
 import { getWctLibrary } from "../lib/wct-store";
 import { classifyStatus, contentStatus } from "../lib/product-filters";
+import { getHiddenProductIds } from "../lib/hidden-products";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 const limitArgIndex = process.argv.indexOf("--limit");
@@ -81,6 +82,8 @@ async function main() {
 
   console.log("Scanning products…\n");
 
+  const hiddenProductIds = await getHiddenProductIds();
+
   let cursor: string | null = null;
   let totalScanned = 0;
   let totalSkipped = 0;
@@ -96,6 +99,8 @@ async function main() {
 
     for (const { node } of data.products.edges) {
       totalScanned++;
+
+      if (hiddenProductIds.has(node.id)) { totalSkipped++; continue; }
 
       const cs = classifyStatus(node);
       const contentSt = contentStatus({
