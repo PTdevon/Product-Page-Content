@@ -289,6 +289,7 @@ export default function QualityReportPage() {
                 title: r.title,
                 productTypePt: r.productTypePt,
                 summary: r.summary,
+                wctBullets: r.wctBullets,
                 pfBullets: r.pfBullets,
               })),
             }),
@@ -560,12 +561,19 @@ export default function QualityReportPage() {
                       </span>
                     )}
                   </div>
-                  <button
-                    onClick={runReport}
-                    className="text-xs text-gray-400 hover:text-gray-600 border border-gray-200 px-2 py-0.5 rounded"
-                  >
-                    Re-run
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={runReport}
+                      className="px-3 py-1.5 bg-gray-900 text-white text-xs rounded hover:bg-gray-700"
+                    >
+                      Re-run report
+                    </button>
+                    {productCount !== null && productCount > 0 && (
+                      <span className="text-xs text-gray-400">
+                        ~{formatCost(productCount)}
+                      </span>
+                    )}
+                  </div>
                   <button
                     onClick={clearReport}
                     className="text-xs text-gray-400 hover:text-gray-600 border border-gray-200 px-2 py-0.5 rounded"

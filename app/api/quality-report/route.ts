@@ -17,15 +17,17 @@ interface AiBatchResult {
   contextIssues: string[];
 }
 
-async function checkBatch(rows: Pick<QualityRow, "productId" | "title" | "productTypePt" | "summary" | "pfBullets">[]): Promise<AiBatchResult[]> {
+async function checkBatch(rows: Pick<QualityRow, "productId" | "title" | "productTypePt" | "summary" | "wctBullets" | "pfBullets">[]): Promise<AiBatchResult[]> {
   const productsList = rows
     .map((row, i) => {
+      const wctList = row.wctBullets.map((b) => b.replace(/<[^>]+>/g, " ").trim()).filter(Boolean).join("; ");
       const pfList = row.pfBullets.filter((b) => b.trim()).join("; ");
       return `Product ${i + 1}:
 ID: ${row.productId}
 Title: ${row.title}
 Type: ${row.productTypePt || "(not classified)"}
 Summary: "${row.summary || "(no summary)"}"
+Why Choose This bullets: ${wctList || "(none)"}
 Perfect For phrases: ${pfList || "(none)"}`;
     })
     .join("\n\n");
@@ -35,10 +37,10 @@ Perfect For phrases: ${pfList || "(none)"}`;
 For each product check TWO things:
 
 1. BORING_SUMMARY: Is the summary generic, AI-sounding, or template-like?
-   Flag if it contains clichéd phrases like: "perfect gift", "sure to delight", "elevate your", "thoughtfully designed", "thoughtfully crafted", "timeless", "make a statement", "whether you're looking", "a must-have", "truly special", "ideal for", "without trying too hard", "loved by all". Also flag if the summary sounds vague and could apply to any product rather than this specific one, or if it reads like marketing filler rather than a genuine product description.
+   Flag if the summary sounds vague and could apply to any product rather than this specific one, or if it reads like marketing filler rather than a genuine product description.
 
-2. CONTEXT_MISMATCH: Does any content describe the product in a way that doesn't fit its product type?
-   Examples of problems: wearing/outfit language (wear, worn, wearing) on products that aren't jewellery or bags; treating a Greetings Card as "the perfect gift" rather than a card to send alongside a gift; describing a practical household item as a gift in a way that sounds odd; content that clearly belongs to a different product category entirely.
+2. CONTEXT_MISMATCH: Does any content field (summary, Why Choose This bullets, or Perfect For phrases) use language or assign phrases that would only make sense for a different product type, target audience, or use context?
+   Flag if content feels like it belongs to a different product.
 
 Respond ONLY with a JSON array with exactly ${rows.length} entries in the same order as the input. No other text before or after the JSON:
 [
@@ -83,7 +85,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Anthropic API key not configured", results: [] }, { status: 400 });
   }
 
-  const body = await req.json() as { rows: Pick<QualityRow, "productId" | "title" | "productTypePt" | "summary" | "pfBullets">[] };
+  const body = await req.json() as { rows: Pick<QualityRow, "productId" | "title" | "productTypePt" | "summary" | "wctBullets" | "pfBullets">[] };
   const rows = body.rows ?? [];
 
   if (!Array.isArray(rows) || rows.length === 0) {

@@ -119,15 +119,6 @@ function checkMissingBullets(row: QualityRow): QualityIssue | null {
   return null;
 }
 
-// Summary is supposed to be a single sentence — flag if it's very long or contains banned phrases
-const BANNED_PHRASES = [
-  "perfect gift", "thoughtful gift", "thoughtfully designed", "thoughtfully crafted",
-  "sure to delight", "elevate your", "timeless", "make a statement",
-  "look no further", "whether you're looking", "stands the test of time",
-  "a must-have", "truly special", "ideal for", "loved by all",
-  "without trying too hard",
-];
-
 const SUMMARY_MAX_CHARS = 220;
 
 function checkBoringSummary(row: QualityRow): QualityIssue | null {
@@ -141,18 +132,6 @@ function checkBoringSummary(row: QualityRow): QualityIssue | null {
       detail: `Summary is ${s.length} characters — should be a single concise sentence`,
       severity: "warning",
     };
-  }
-
-  const lower = s.toLowerCase();
-  for (const phrase of BANNED_PHRASES) {
-    if (lower.includes(phrase)) {
-      return {
-        checkId: "boring-summary",
-        label: "Clichéd summary",
-        detail: `Summary contains "${phrase}"`,
-        severity: "warning",
-      };
-    }
   }
 
   return null;
