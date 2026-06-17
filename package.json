@@ -17,6 +17,7 @@
     "clear-pf": "npx tsx --env-file .env.local scripts/clear-pf-content.ts",
     "approve-complete": "npx tsx --env-file .env.local scripts/approve-complete-products.ts",
     "populate-content": "npx tsx --env-file .env.local scripts/populate-content.ts",
+    "check-orphaned-phrases": "npx tsx --env-file .env.local scripts/check-orphaned-phrases.ts",
     "migrate-library": "node scripts/migrate-library-to-metaobject.mjs",
     "migrate-library:dry-run": "node scripts/migrate-library-to-metaobject.mjs --dry-run",
     "test": "vitest run",

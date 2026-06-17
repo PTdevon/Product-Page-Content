@@ -136,10 +136,17 @@ export async function POST(req: NextRequest) {
 
         const effectiveText = pendingText ?? wctEntry.text;
         const effectiveSubtext = pendingSubtext ?? wctEntry.subtext;
+        const currentLibraryFormatted = formatWCT(wctEntry.text, wctEntry.subtext);
         const newFormatted = formatWCT(effectiveText, effectiveSubtext);
-        const oldFormatted = wctEntry.searchFormatted || newFormatted;
+        // When searchFormatted is empty (entry was never pushed via this flow), fall back to
+        // the current library text so we locate products even without a prior push marker.
+        const oldFormatted = wctEntry.searchFormatted || currentLibraryFormatted;
         // Revert pushes oldFormatted back onto the given ids; otherwise old -> new.
         const [fromFormatted, toFormatted] = revertIds ? [newFormatted, oldFormatted] : [oldFormatted, newFormatted];
+        // Also match currentLibraryFormatted — covers the case where searchFormatted is stale
+        // (e.g. a partial subtext push updated some products but the library marker was never
+        // refreshed), so products with the current subtext still get caught and updated.
+        const fromFormatteds = new Set([fromFormatted, ...(revertIds ? [] : [currentLibraryFormatted])].filter(Boolean));
 
         const nodes = revertIds ? await fetchNodes(revertIds) : retryIds ? await fetchNodes(retryIds) : scanAll();
 
@@ -158,11 +165,11 @@ export async function POST(req: NextRequest) {
             node.wct3?.value ?? "", node.wct4?.value ?? "",
           ];
 
-          const hasMatch = bullets.some((b) => b === fromFormatted);
+          const hasMatch = bullets.some((b) => fromFormatteds.has(b));
           if (!hasMatch) { skipped++; continue; }
 
           try {
-            const newBullets = bullets.map((b) => b === fromFormatted ? toFormatted : b);
+            const newBullets = bullets.map((b) => fromFormatteds.has(b) ? toFormatted : b);
             await setProductMetafields(node.id, {
               whyChooseThis: {
                 bullet1: newBullets[0], bullet2: newBullets[1],

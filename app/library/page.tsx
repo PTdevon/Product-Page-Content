@@ -118,6 +118,10 @@ function WCTEditModal({ entry, onClose, onSaved, taxonomy }: WCTEditModalProps) 
 
   async function commitWithoutPush() {
     if (!entry || !textChanged) return;
+    // Preserve searchFormatted: if it was already set (from a prior push), keep it so future
+    // finds can still locate products. If it was empty (entry was never pushed), use the current
+    // library text — that's what populate-content or similar would have written to products.
+    const searchFormatted = entry._edit?.searchFormatted || `<strong>${entry.text}</strong> ${entry.subtext}`;
     const res = await fetch("/api/library/entry", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -129,7 +133,7 @@ function WCTEditModal({ entry, onClose, onSaved, taxonomy }: WCTEditModalProps) 
           productStyle: entry.productStyle,
           category: entry.category,
           text, subtext,
-          searchFormatted: entry._edit?.searchFormatted ?? "",
+          searchFormatted,
         },
       }),
     });

@@ -41,6 +41,7 @@ For each product check TWO things:
 
 2. CONTEXT_MISMATCH: Does any content field (summary, Why Choose This bullets, or Perfect For phrases) use language or assign phrases that would only make sense for a different product type, target audience, or use context?
    Flag if content feels like it belongs to a different product.
+   NOTE: "Why Choose This" bullets are reusable library entries intentionally shared across many products of the same type — do NOT flag them for being identical or repetitive across products. Only flag a WCT bullet if it is genuinely wrong for this specific product type (e.g. uses wearable language for a non-wearable product).
 
 Respond ONLY with a JSON array with exactly ${rows.length} entries in the same order as the input. No other text before or after the JSON:
 [

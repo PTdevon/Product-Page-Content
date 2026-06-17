@@ -76,14 +76,21 @@ export async function POST(req: NextRequest) {
     const entryProductType = wctEntry.productType;
     const entryProductStyle = wctEntry.productStyle;
 
+    const currentLibraryFormatted = formatWCT(wctEntry.text, wctEntry.subtext);
     const newFormatted = formatWCT(pendingText ?? wctEntry.text, pendingSubtext ?? wctEntry.subtext);
-    const oldFormatted = wctEntry.searchFormatted || newFormatted;
+    // When searchFormatted is empty (entry was never pushed via the push flow, e.g. set by
+    // populate-content), fall back to the current library text rather than newFormatted.
+    // If we fell back to newFormatted and the user has changed the text, we'd search for the
+    // new text instead of the old one and find nothing.
+    const oldFormatted = wctEntry.searchFormatted || currentLibraryFormatted;
 
-    // Only search for old text when it differs from new — products already on new text
-    // are already up to date and would show as "0 updated" in the push step.
+    // Always include currentLibraryFormatted in the search as well. This catches the case where
+    // searchFormatted is stale (e.g. a partial push updated the subtext on products but the
+    // library marker was never refreshed) — products will have the current subtext, not the one
+    // recorded in searchFormatted, so we need both to find everything.
     const searchFor = oldFormatted !== newFormatted
-      ? new Set([oldFormatted])
-      : new Set([oldFormatted, newFormatted].filter(Boolean));
+      ? new Set([oldFormatted, currentLibraryFormatted].filter(Boolean))
+      : new Set([oldFormatted, newFormatted, currentLibraryFormatted].filter(Boolean));
 
     while (true) {
       const data: ScanResult = await shopifyGraphQL<ScanResult>(SCAN_QUERY, { first: 250, after: cursor });

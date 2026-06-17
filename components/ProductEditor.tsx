@@ -499,13 +499,15 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
             {summaryOptions.length > 0 && (
               <div className="mt-3 space-y-2">
                 {summaryOptions.map((opt, i) => (
-                  <button
-                    key={i}
-                    onClick={() => { setProductSummary(opt); setSummaryOptions([]); }}
-                    className="w-full text-left px-3 py-2.5 bg-white border border-gray-200 rounded-md text-sm text-gray-700 hover:border-gray-400 hover:bg-gray-50 transition-all"
-                  >
-                    <span className="text-gray-400 font-medium mr-1.5">{i + 1}.</span>{opt}
-                  </button>
+                  <div key={i} className="flex items-start gap-2 bg-white border border-gray-200 rounded-md px-3 py-2.5">
+                    <span className="flex-1 text-sm text-gray-700"><span className="text-gray-400 font-medium mr-1.5">{i + 1}.</span>{opt}</span>
+                    <button
+                      onClick={() => { setProductSummary(opt); setSummaryOptions([]); }}
+                      className="shrink-0 text-xs text-white bg-gray-800 hover:bg-gray-600 px-2 py-0.5 rounded transition-colors"
+                    >
+                      Use
+                    </button>
+                  </div>
                 ))}
               </div>
             )}
