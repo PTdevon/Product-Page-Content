@@ -183,10 +183,14 @@ export function assignPerfectFor(
   const prioritiseSpecific = rand() < 0.5;
 
   const sorted = [...candidates].sort((a, b) => {
+    // Interest-matched phrases first (filterByInterest=true means matched, since non-matching were excluded in step 1)
+    const aInterest = a.filterByInterest ? 0 : 1;
+    const bInterest = b.filterByInterest ? 0 : 1;
+    if (aInterest !== bInterest) return aInterest - bInterest;
+
     const aSpecific = a.productStyle !== "ALL" ? 0 : 1;
     const bSpecific = b.productStyle !== "ALL" ? 0 : 1;
-    const order = prioritiseSpecific ? aSpecific - bSpecific : bSpecific - aSpecific;
-    return order; // preserve shuffle order within tier (no secondary sort)
+    return prioritiseSpecific ? aSpecific - bSpecific : bSpecific - aSpecific;
   });
 
   // Step 3: pick 4 with category diversity and icon diversity
@@ -217,6 +221,12 @@ export function assignPerfectFor(
     selected.push(pick);
     if (pick.icon) selectedIcons.add(pick.icon);
     categoryCounts[pick.category] = (categoryCounts[pick.category] ?? 0) + 1;
+  }
+
+  // Shuffle final selection so interest-matched phrases don't always land in slot 1
+  for (let i = selected.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [selected[i], selected[j]] = [selected[j], selected[i]];
   }
 
   return {

@@ -57,7 +57,7 @@ function WCTEditModal({ entry, onClose, onSaved, taxonomy }: WCTEditModalProps) 
   const [pushBusy, setPushBusy] = useState(false);
   const updatingRef = useRef(false);
 
-  const availableStyles = productType ? (taxonomy[productType] ?? []) : [];
+  const availableStyles = productType ? [...(taxonomy[productType] ?? [])].sort() : [];
   const hasEdit = !!entry?._edit;
   const canFind = !isNew;
   const [originalText] = useState(entry?.text ?? "");
@@ -251,7 +251,7 @@ function WCTEditModal({ entry, onClose, onSaved, taxonomy }: WCTEditModalProps) 
                 <select value={productType} onChange={(e) => { setProductType(e.target.value); setProductStyle(""); }}
                   className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                   <option value="">Select type…</option>
-                  {Object.keys(taxonomy).map((t) => <option key={t} value={t}>{t}</option>)}
+                  {Object.keys(taxonomy).sort().map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
               <div>
@@ -376,7 +376,7 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
   const [typeStylePairs, setTypeStylePairs] = useState<{ type: string; style: string }[]>([]);
   const [addingType, setAddingType] = useState("");
   const [addingStyle, setAddingStyle] = useState("");
-  const addingStyles = addingType ? (taxonomy[addingType] ?? []) : [];
+  const addingStyles = addingType ? [...(taxonomy[addingType] ?? [])].sort() : [];
 
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
@@ -1066,7 +1066,7 @@ function PFEditModal({ entry, onClose, onSaved, taxonomy }: PFEditModalProps) {
                     <select value={addingType} onChange={(e) => { setAddingType(e.target.value); setAddingStyle(""); }}
                       className="flex-1 min-w-0 border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                       <option value="">Add Product Type…</option>
-                      {Object.keys(taxonomy).map((t) => <option key={t} value={t}>{t}</option>)}
+                      {Object.keys(taxonomy).sort().map((t) => <option key={t} value={t}>{t}</option>)}
                     </select>
                     {addingStyles.length > 0 && (
                       <select value={addingStyle} onChange={(e) => setAddingStyle(e.target.value)}
@@ -1349,13 +1349,13 @@ function LibraryPageInner() {
         <select value={productType} onChange={(e) => { setProductType(e.target.value); setProductStyle(""); }}
           className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
           <option value="">All types</option>
-          {Object.keys(taxonomy).map((t) => <option key={t} value={t}>{t}</option>)}
+          {Object.keys(taxonomy).sort().map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
         <select value={productStyle} onChange={(e) => setProductStyle(e.target.value)}
           disabled={!productType || (taxonomy[productType] ?? []).length === 0}
           className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-40">
           <option value="">All styles</option>
-          {(taxonomy[productType] ?? []).map((s) => <option key={s} value={s}>{s}</option>)}
+          {[...(taxonomy[productType] ?? [])].sort().map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
         <select value={category} onChange={(e) => setCategory(e.target.value)}
           className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">

@@ -917,7 +917,7 @@ export default function BulkPage() {
               className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
               <option value="">All types</option>
-              {Object.keys(taxonomy).map((t) => <option key={t} value={t}>{t}</option>)}
+              {Object.keys(taxonomy).sort().map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
             <select
               value={styleFilter}
@@ -926,7 +926,7 @@ export default function BulkPage() {
               className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-40"
             >
               <option value="">All styles</option>
-              {(taxonomy[typeFilter] ?? []).map((s) => <option key={s} value={s}>{s}</option>)}
+              {[...(taxonomy[typeFilter] ?? [])].sort().map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           </>
         )}
@@ -1178,7 +1178,7 @@ export default function BulkPage() {
                                 className="w-full border border-gray-300 rounded px-1.5 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-400"
                               >
                                 <option value="">— choose —</option>
-                                {Object.keys(taxonomy).map((t) => (
+                                {Object.keys(taxonomy).sort().map((t) => (
                                   <option key={t} value={t}>{t}</option>
                                 ))}
                               </select>

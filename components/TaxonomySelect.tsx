@@ -28,13 +28,13 @@ export function TaxonomySelect({ taxonomy, value, onChange, className }: Taxonom
   return (
     <select value={value} onChange={handleChange} className={className}>
       <option value="">All types</option>
-      {Object.entries(taxonomy).map(([type, styles]) =>
+      {Object.entries(taxonomy).sort(([a], [b]) => a.localeCompare(b)).map(([type, styles]) =>
         styles.length === 0 ? (
           <option key={type} value={type}>{type}</option>
         ) : (
           <optgroup key={type} label={type}>
             <option value={type}>All styles</option>
-            {styles.map((style) => (
+            {[...styles].sort((a, b) => a.localeCompare(b)).map((style) => (
               <option key={style} value={`${type}||${style}`}>{style}</option>
             ))}
           </optgroup>

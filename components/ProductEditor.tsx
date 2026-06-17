@@ -444,7 +444,7 @@ export default function ProductEditor({ productId, productTitle, onSaved, onClos
               className="w-full px-3 py-2 bg-white border border-gray-200 rounded-md text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent mb-3"
             >
               <option value="">Select type…</option>
-              {Object.keys(taxonomy).map((t) => <option key={t} value={t}>{t}</option>)}
+              {Object.keys(taxonomy).sort().map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
             {productType && (
               <div className="flex flex-wrap gap-x-4 gap-y-2">

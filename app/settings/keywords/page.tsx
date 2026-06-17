@@ -89,7 +89,7 @@ export default function KeywordsPage() {
                       value={rawKeywords[phrase] ?? ""}
                       onChange={(e) => setRawKeywords((prev) => ({ ...prev, [phrase]: e.target.value }))}
                       placeholder="One keyword per line…"
-                      className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y min-h-[300px]"
+                      className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y min-h-[150px]"
                     />
                   </div>
                 ))}
