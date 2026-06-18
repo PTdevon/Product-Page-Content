@@ -1271,6 +1271,7 @@ function LibraryPageInner() {
 
   const [wctEntries, setWctEntries] = useState<WCTRow[]>([]);
   const [pfPhrases, setPfPhrases] = useState<PFPhraseRow[]>([]);
+  const [coveragePhrases, setCoveragePhrases] = useState<PFPhraseRow[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
 
@@ -1334,6 +1335,20 @@ function LibraryPageInner() {
 
   useEffect(() => { fetchEntries(); }, [fetchEntries]);
 
+  const [coverageLoading, setCoverageLoading] = useState(false);
+
+  // Fetch all phrases for selected type (unfiltered by style/category) for coverage calculation
+  useEffect(() => {
+    if (!productType || tab !== "perfect") { setCoveragePhrases([]); return; }
+    setCoverageLoading(true);
+    const params = new URLSearchParams({ type: "perfect", format: "phrases" });
+    params.set("productType", productType);
+    fetch(`/api/library?${params}`, { cache: "no-store" })
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { setCoveragePhrases(d?.phrases ?? []); setCoverageLoading(false); })
+      .catch(() => setCoverageLoading(false));
+  }, [productType, tab]);
+
   function closeModal() { setEditWctTarget(undefined); setEditPfTarget(undefined); setAddingNew(false); }
 
   return (
@@ -1378,6 +1393,9 @@ function LibraryPageInner() {
 
       <div className="flex-1 overflow-auto min-h-0">
         <div className="max-w-5xl mx-auto px-6 py-4">
+          {tab === "perfect" && productType && (
+            <PfCoverageBanner phrases={coveragePhrases} productType={productType} taxonomy={taxonomy} loading={coverageLoading} />
+          )}
           {tab === "why" ? (
             <WctTable entries={wctEntries} loading={loading} onEdit={setEditWctTarget} />
           ) : (
@@ -1406,6 +1424,148 @@ function LibraryPageInner() {
         />
       )}
     </div>
+  );
+}
+
+// ── PF Coverage Banner ────────────────────────────────────────────────────────
+
+function PfCoverageBanner({ phrases, productType, taxonomy, loading }: { phrases: PFPhraseRow[]; productType: string; taxonomy: Record<string, string[]>; loading: boolean }) {
+  const styles = taxonomy[productType] ?? [];
+  const [diagStyle, setDiagStyle] = useState<string | null>(null);
+  const [diagData, setDiagData] = useState<Record<string, unknown> | null>(null);
+  const [diagLoading, setDiagLoading] = useState(false);
+
+  async function runDiag(style: string) {
+    setDiagStyle(style);
+    setDiagData(null);
+    setDiagLoading(true);
+    try {
+      const params = new URLSearchParams({ type: productType, style });
+      const res = await fetch(`/api/debug-pf?${params}`);
+      const data = await res.json();
+      setDiagData(data);
+    } catch {
+      setDiagData({ error: "Failed to load" });
+    }
+    setDiagLoading(false);
+  }
+
+  if (styles.length === 0) return null;
+
+  if (loading) {
+    return (
+      <div className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-400">
+        Checking assignment coverage…
+      </div>
+    );
+  }
+
+  const coverage = styles.map((style) => {
+    const all = phrases.filter(
+      (p) =>
+        !p.timeSensitive &&
+        p.applicabilities.some(
+          (a) =>
+            (a.productType === productType || a.productType === "ALL") &&
+            (a.productStyle === "ALL" || a.productStyle === style)
+        )
+    );
+    const unique = new Set(all.map((p) => p.phrase));
+    const withoutInterest = new Set(all.filter((p) => !p.filterByInterest).map((p) => p.phrase));
+    return { style, total: unique.size, withoutInterest: withoutInterest.size, hasInterestFiltered: withoutInterest.size < unique.size };
+  });
+
+  const phraseTexts = phrases.filter((p) => !p.timeSensitive).map((p) => p.phrase);
+  const textCounts = new Map<string, number>();
+  for (const t of phraseTexts) textCounts.set(t, (textCounts.get(t) ?? 0) + 1);
+  const duplicates = [...textCounts.entries()].filter(([, c]) => c > 1).map(([p]) => p);
+
+  const hasIssue = coverage.some((c) => c.total < 4 || c.withoutInterest < 4) || duplicates.length > 0;
+
+  type DiagEntry = { phrase: string; style: string; filterByInterest: boolean; minPrice?: number | null; maxPrice?: number | null };
+  const diagResult = diagData as { effectiveCount?: number; wouldAssign?: number; step1_afterTypeStyleFilter?: DiagEntry[]; step2_afterDedup?: DiagEntry[]; step1b_interestExcludedIfKeywordsMatch?: string[]; stylesInLibrary?: string[]; error?: string } | null;
+
+  return (
+    <>
+      <div className={`mb-4 p-3 rounded-lg text-sm border ${hasIssue ? "bg-amber-50 border-amber-200" : "bg-gray-50 border-gray-200"}`}>
+        <div className={`font-medium mb-2 ${hasIssue ? "text-amber-800" : "text-gray-600"}`}>Assignment coverage — available phrases per style</div>
+        <div className="flex gap-4 flex-wrap items-center">
+          {coverage.map(({ style, total, withoutInterest, hasInterestFiltered }) => (
+            <span key={style} className={total < 4 ? "text-red-700 font-semibold" : withoutInterest < 4 ? "text-amber-700 font-semibold" : "text-green-700"}>
+              {style}: {total}{hasInterestFiltered ? ` (${withoutInterest} without interest filter)` : ""}{total < 4 ? " ⚠" : withoutInterest < 4 ? " ⚠ interest" : " ✓"}
+            </span>
+          ))}
+        </div>
+        {duplicates.length > 0 && (
+          <div className="mt-2 text-red-700 font-medium">
+            Duplicate phrase texts — only one will be assigned per product: {duplicates.join(", ")}
+          </div>
+        )}
+        {!hasIssue && <div className="mt-1 text-gray-400 text-xs">All styles have 4+ phrases available.</div>}
+        <div className="mt-3 flex gap-2 flex-wrap">
+          {styles.map((style) => (
+            <button key={style} onClick={() => runDiag(style)}
+              className="px-2 py-1 text-xs bg-white border border-gray-300 rounded hover:bg-gray-50 text-gray-600">
+              Diagnose {style}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {diagStyle && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-y-auto p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="font-semibold text-gray-900">Assignment diagnosis: {productType} / {diagStyle}</h2>
+              <button onClick={() => setDiagStyle(null)} className="text-gray-400 hover:text-gray-600 text-lg">✕</button>
+            </div>
+            {diagLoading && <p className="text-gray-400 text-sm">Running…</p>}
+            {diagResult?.error && <p className="text-red-600 text-sm">{diagResult.error}</p>}
+            {diagResult && !diagResult.error && (
+              <div className="space-y-4 text-sm">
+                <div className={`p-3 rounded-lg font-medium ${(diagResult.effectiveCount ?? 0) < 4 ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"}`}>
+                  Effective candidates after all filters: {diagResult.effectiveCount} → would assign {diagResult.wouldAssign} phrase{(diagResult.wouldAssign ?? 0) !== 1 ? "s" : ""}
+                </div>
+                <div>
+                  <div className="font-medium text-gray-700 mb-1">Styles present in library for {productType}:</div>
+                  <div className="text-gray-500">{(diagResult.stylesInLibrary ?? []).join(", ") || "(none)"}</div>
+                </div>
+                <div>
+                  <div className="font-medium text-gray-700 mb-1">After type/style filter ({(diagResult.step1_afterTypeStyleFilter ?? []).length} phrases):</div>
+                  <div className="space-y-0.5">
+                    {(diagResult.step1_afterTypeStyleFilter ?? []).map((e, i) => (
+                      <div key={i} className="text-gray-600">• {e.phrase} <span className="text-gray-400">[{e.style}]{e.filterByInterest ? " 🔍interest" : ""}</span></div>
+                    ))}
+                  </div>
+                </div>
+                {(diagResult.step1b_interestExcludedIfKeywordsMatch ?? []).length > 0 && (
+                  <div>
+                    <div className="font-medium text-amber-700 mb-1">Would be excluded by interest filter (keywords configured):</div>
+                    {(diagResult.step1b_interestExcludedIfKeywordsMatch ?? []).map((s, i) => <div key={i} className="text-amber-600">• {s}</div>)}
+                  </div>
+                )}
+                <div>
+                  <div className="font-medium text-gray-700 mb-1">After deduplication ({(diagResult.step2_afterDedup ?? []).length} unique phrases):</div>
+                  <div className="space-y-0.5">
+                    {(diagResult.step2_afterDedup ?? []).map((e, i) => {
+                      const priceTag = e.minPrice != null || e.maxPrice != null
+                        ? ` 💰 price: ${e.minPrice != null ? `min £${e.minPrice}` : ""}${e.minPrice != null && e.maxPrice != null ? " / " : ""}${e.maxPrice != null ? `max £${e.maxPrice}` : ""}`
+                        : "";
+                      return (
+                        <div key={i} className={`${priceTag ? "text-amber-700" : "text-gray-600"}`}>
+                          • {e.phrase} <span className="text-gray-400">[{e.style}]{e.filterByInterest ? " 🔍" : ""}</span>
+                          {priceTag && <span className="text-amber-600 text-xs ml-1">{priceTag}</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

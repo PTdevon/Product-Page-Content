@@ -53,6 +53,7 @@ interface ContentRow {
   isChristmas: boolean;
   summaryError?: { message: string; billingUrl?: string };
   regenerateError?: { message: string; billingUrl?: string };
+  pfDebug?: { phrase: string; style: string; excluded: string | null }[];
 }
 
 
@@ -1528,6 +1529,20 @@ export default function BulkPage() {
                                 );
                               })}
                             </div>
+                            {row.pfBullets.filter(Boolean).length < 4 && (
+                              <details className="mt-2 text-xs" open={!!row.pfDebug}>
+                                <summary className="cursor-pointer text-amber-700 font-medium">⚠ Only {row.pfBullets.filter(Boolean).length}/4 phrases assigned{row.pfDebug ? " — tap to see why" : ""}</summary>
+                                {row.pfDebug && (
+                                  <div className="mt-1 space-y-0.5 pl-2 border-l-2 border-amber-200">
+                                    {row.pfDebug.map((e, i) => (
+                                      <div key={i} className={e.excluded ? "text-gray-400" : "text-green-700"}>
+                                        {e.excluded ? "✗" : "✓"} {e.phrase} [{e.style}]{e.excluded ? ` — ${e.excluded}` : ""}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </details>
+                            )}
                           </div>}
                         </div>
 

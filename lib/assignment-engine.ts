@@ -140,6 +140,27 @@ export function assignSeasonalPhrases(
   };
 }
 
+export function debugPerfectForFilter(
+  product: ProductContext,
+  library: PerfectForEntry[],
+  interestKeywords: Record<string, string[]> = {}
+): { phrase: string; style: string; excluded: string | null }[] {
+  return library
+    .filter((e) => e.productType === "ALL" || e.productType === product.productType)
+    .map((entry) => {
+      if (entry.timeSensitive) return { phrase: entry.phrase, style: entry.productStyle, excluded: `seasonal (${entry.timeSensitive})` };
+      const price = product.price ?? 0;
+      if (entry.minPrice !== undefined && price > 0 && price < entry.minPrice) return { phrase: entry.phrase, style: entry.productStyle, excluded: `price ${price} below min ${entry.minPrice}` };
+      if (entry.maxPrice !== undefined && price > 0 && price > entry.maxPrice) return { phrase: entry.phrase, style: entry.productStyle, excluded: `price ${price} above max ${entry.maxPrice}` };
+      if (entry.filterByInterest && !productMatchesInterest(entry, product, interestKeywords)) return { phrase: entry.phrase, style: entry.productStyle, excluded: `interest filter (no keyword match)` };
+      const typeMatch = entry.productType === "ALL" || entry.productType === product.productType;
+      const styleMatch = entry.productStyle === "ALL" || product.productStyles.includes(entry.productStyle);
+      if (!typeMatch) return { phrase: entry.phrase, style: entry.productStyle, excluded: `type mismatch (${entry.productType} vs ${product.productType})` };
+      if (!styleMatch) return { phrase: entry.phrase, style: entry.productStyle, excluded: `style mismatch (${entry.productStyle} not in [${product.productStyles.join(",")}])` };
+      return { phrase: entry.phrase, style: entry.productStyle, excluded: null };
+    });
+}
+
 export function assignPerfectFor(
   product: ProductContext,
   library: PerfectForEntry[],

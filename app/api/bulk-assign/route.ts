@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { getProductWithMetafields, setProductMetafields } from "@/lib/metafields";
-import { assignWhyChooseThis, assignPerfectFor } from "@/lib/assignment-engine";
+import { assignWhyChooseThis, assignPerfectFor, debugPerfectForFilter } from "@/lib/assignment-engine";
 import { getSettings } from "@/lib/settings-store";
 import { generateProductSummary } from "@/lib/generate-summary";
 import { getPfLibrary } from "@/lib/pf-store";
@@ -80,6 +80,9 @@ export async function POST(req: NextRequest) {
 
           const wct = assignWhyChooseThis(ctx, wctLibrary);
           const pf = assignPerfectFor(ctx, pfLibrary, settings.dateRanges, today, undefined, undefined, settings.interestKeywords);
+          const pfDebug = pf.bullets.filter(Boolean).length < 4
+            ? debugPerfectForFilter(ctx, pfLibrary, settings.interestKeywords)
+            : null;
 
           const summaryResult = await generateProductSummary({
             title: product.title,
@@ -121,7 +124,7 @@ export async function POST(req: NextRequest) {
           });
 
           succeeded++;
-          send({ type: "progress", productId: productGid, title: product.title, status: "ok", summaryStatus });
+          send({ type: "progress", productId: productGid, title: product.title, status: "ok", summaryStatus, pfCount: pf.bullets.filter(Boolean).length, pfDebug });
           if (fatalError) {
             send({ type: "fatal-error", error: fatalError });
           }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { getProductsBatchWithMetafields } from "@/lib/metafields";
-import { assignWhyChooseThis, assignPerfectFor } from "@/lib/assignment-engine";
+import { assignWhyChooseThis, assignPerfectFor, debugPerfectForFilter } from "@/lib/assignment-engine";
 import { generateProductSummary } from "@/lib/generate-summary";
 import { getSettings } from "@/lib/settings-store";
 import { getWctLibrary } from "@/lib/wct-store";
@@ -44,10 +44,11 @@ export async function POST(req: NextRequest) {
     return bullets.map((phrase, i) => pfIconByPhrase.get(phrase) ?? storedIcons[i] ?? "") as [string, string, string, string];
   }
 
-  function storedRow(product: { id: string; title: string; featuredImage?: { url: string } | null }, metafields: Awaited<ReturnType<typeof getProductsBatchWithMetafields>>[number]["metafields"], source: "existing" | "needs-classify") {
+  function storedRow(product: { id: string; title: string; vendor?: string; featuredImage?: { url: string } | null }, metafields: Awaited<ReturnType<typeof getProductsBatchWithMetafields>>[number]["metafields"], source: "existing" | "needs-classify") {
     return {
       productId: product.id,
       title: product.title,
+      vendor: product.vendor ?? "",
       imageUrl: product.featuredImage?.url ?? null,
       productTypePt: metafields.productTypePt,
       productStylePt: metafields.productStylePt,
@@ -81,6 +82,7 @@ export async function POST(req: NextRequest) {
   type PendingRow = {
     productId: string;
     title: string;
+    vendor: string;
     imageUrl: string | null;
     productTypePt: string;
     productStylePt: string | null;
@@ -89,23 +91,42 @@ export async function POST(req: NextRequest) {
     wctBullets: [string, string, string, string];
     pfBullets: [string, string, string, string];
     pfIcons: [string, string, string, string];
+    pfDebug?: { phrase: string; style: string; excluded: string | null }[];
   };
 
-  const settled: ReturnType<typeof storedRow>[] = [];
+  type DebugEntry = { phrase: string; style: string; excluded: string | null };
+  type SettledRow = ReturnType<typeof storedRow> & { pfDebug?: DebugEntry[] };
+  const settled: SettledRow[] = [];
   const pending: PendingRow[] = [];
+
+  function addSettledWithDebug(product: Parameters<typeof storedRow>[0] & { descriptionHtml?: string }, metafields: Parameters<typeof storedRow>[1], source: Parameters<typeof storedRow>[2]) {
+    const row: SettledRow = storedRow(product, metafields, source);
+    if (!summaryOnly && !readOnly && row.pfBullets.filter(Boolean).length < 4) {
+      const t = metafields.productTypePt;
+      const ss = metafields.productStylePt ? metafields.productStylePt.split(",").map((s) => s.trim()).filter(Boolean) : [];
+      if (t && ss.length > 0) {
+        row.pfDebug = debugPerfectForFilter(
+          { title: product.title, descriptionText: (product.descriptionHtml ?? "").replace(/<[^>]+>/g, " ").trim(), productType: t, productStyles: ss },
+          pfLibrary,
+          settings?.interestKeywords ?? {}
+        );
+      }
+    }
+    settled.push(row);
+  }
 
   for (const { product, metafields } of products) {
     const hasSummary = !!metafields.productSummary;
-    const hasWct = !!metafields.whyChooseThis.bullet1;
-    const hasPf = !!metafields.perfectFor.bullet1;
+    const hasWct = !!(metafields.whyChooseThis.bullet1 && metafields.whyChooseThis.bullet2 && metafields.whyChooseThis.bullet3 && metafields.whyChooseThis.bullet4);
+    const hasPf = !!(metafields.perfectFor.bullet1 && metafields.perfectFor.bullet2 && metafields.perfectFor.bullet3 && metafields.perfectFor.bullet4);
 
     if (hasSummary && (summaryOnly || (hasWct && hasPf))) {
-      settled.push(storedRow(product, metafields, "existing"));
+      addSettledWithDebug(product, metafields, "existing");
       continue;
     }
 
     if (readOnly) {
-      settled.push(storedRow(product, metafields, "existing"));
+      addSettledWithDebug(product, metafields, "existing");
       continue;
     }
 
@@ -115,7 +136,7 @@ export async function POST(req: NextRequest) {
       : [];
 
     if (!summaryOnly && (!type || styles.length === 0)) {
-      settled.push(storedRow(product, metafields, "needs-classify"));
+      addSettledWithDebug(product, metafields, "needs-classify");
       continue;
     }
 
@@ -128,10 +149,15 @@ export async function POST(req: NextRequest) {
 
     const wct = summaryOnly ? null : (hasWct ? null : assignWhyChooseThis(ctx, wctLibrary));
     const pf  = summaryOnly ? null : (hasPf  ? null : assignPerfectFor(ctx, pfLibrary, settings!.dateRanges, today, undefined, undefined, settings!.interestKeywords));
+    const pfBulletsNew = pf ? [pf.bullets[0] ?? "", pf.bullets[1] ?? "", pf.bullets[2] ?? "", pf.bullets[3] ?? ""] as [string,string,string,string] : null;
+    const pfDebugData = !summaryOnly && pf && pfBulletsNew && pfBulletsNew.filter(Boolean).length < 4
+      ? debugPerfectForFilter(ctx, pfLibrary, settings!.interestKeywords)
+      : null;
 
     pending.push({
       productId: product.id,
       title: product.title,
+      vendor: product.vendor ?? "",
       imageUrl: product.featuredImage?.url ?? null,
       productTypePt: type ?? "",
       productStylePt: metafields.productStylePt,
@@ -154,6 +180,7 @@ export async function POST(req: NextRequest) {
             [metafields.perfectFor.bullet1, metafields.perfectFor.bullet2, metafields.perfectFor.bullet3, metafields.perfectFor.bullet4],
             [metafields.perfectFor.icon1, metafields.perfectFor.icon2, metafields.perfectFor.icon3, metafields.perfectFor.icon4]
           ),
+      ...(pfDebugData ? { pfDebug: pfDebugData } : {}),
     });
   }
 
@@ -184,6 +211,7 @@ export async function POST(req: NextRequest) {
     ...pending.map((p, i) => ({
       productId: p.productId,
       title: p.title,
+      vendor: p.vendor,
       imageUrl: p.imageUrl,
       productTypePt: p.productTypePt,
       productStylePt: p.productStylePt,
@@ -195,6 +223,7 @@ export async function POST(req: NextRequest) {
       source: "generated" as const,
       skip: false,
       regenerating: false,
+      ...(p.pfDebug ? { pfDebug: p.pfDebug } : {}),
     })),
   ];
 
