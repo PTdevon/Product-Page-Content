@@ -1432,6 +1432,7 @@ function LibraryPageInner() {
 function PfCoverageBanner({ phrases, productType, taxonomy, loading }: { phrases: PFPhraseRow[]; productType: string; taxonomy: Record<string, string[]>; loading: boolean }) {
   const styles = taxonomy[productType] ?? [];
   const [diagStyle, setDiagStyle] = useState<string | null>(null);
+  const [coverageOpen, setCoverageOpen] = useState(false);
   const [diagData, setDiagData] = useState<Record<string, unknown> | null>(null);
   const [diagLoading, setDiagLoading] = useState(false);
 
@@ -1487,29 +1488,39 @@ function PfCoverageBanner({ phrases, productType, taxonomy, loading }: { phrases
 
   return (
     <>
-      <div className={`mb-4 p-3 rounded-lg text-sm border ${hasIssue ? "bg-amber-50 border-amber-200" : "bg-gray-50 border-gray-200"}`}>
-        <div className={`font-medium mb-2 ${hasIssue ? "text-amber-800" : "text-gray-600"}`}>Assignment coverage — available phrases per style</div>
-        <div className="flex gap-4 flex-wrap items-center">
-          {coverage.map(({ style, total, withoutInterest, hasInterestFiltered }) => (
-            <span key={style} className={total < 4 ? "text-red-700 font-semibold" : withoutInterest < 4 ? "text-amber-700 font-semibold" : "text-green-700"}>
-              {style}: {total}{hasInterestFiltered ? ` (${withoutInterest} without interest filter)` : ""}{total < 4 ? " ⚠" : withoutInterest < 4 ? " ⚠ interest" : " ✓"}
-            </span>
-          ))}
-        </div>
-        {duplicates.length > 0 && (
-          <div className="mt-2 text-red-700 font-medium">
-            Duplicate phrase texts — only one will be assigned per product: {duplicates.join(", ")}
+      <div className={`mb-4 rounded-lg text-sm border ${hasIssue ? "bg-amber-50 border-amber-200" : "bg-gray-50 border-gray-200"}`}>
+        <button
+          onClick={() => setCoverageOpen(o => !o)}
+          className={`w-full flex items-center justify-between p-3 font-medium text-left ${hasIssue ? "text-amber-800" : "text-gray-600"}`}
+        >
+          <span>Assignment coverage — available phrases per style</span>
+          <span className="text-xs text-gray-400 ml-2">{coverageOpen ? "▲" : "▼"}</span>
+        </button>
+        {coverageOpen && (
+          <div className="px-3 pb-3">
+            <div className="flex flex-col gap-1">
+              {coverage.map(({ style, total, withoutInterest, hasInterestFiltered }) => (
+                <span key={style} className={total < 4 ? "text-red-700 font-semibold" : withoutInterest < 4 ? "text-amber-700 font-semibold" : "text-green-700"}>
+                  {style}: {total}{hasInterestFiltered ? ` (${withoutInterest} without interest filter)` : ""}{total < 4 ? " ⚠" : withoutInterest < 4 ? " ⚠ interest" : " ✓"}
+                </span>
+              ))}
+            </div>
+            {duplicates.length > 0 && (
+              <div className="mt-2 text-red-700 font-medium">
+                Duplicate phrase texts — only one will be assigned per product: {duplicates.join(", ")}
+              </div>
+            )}
+            {!hasIssue && <div className="mt-1 text-gray-400 text-xs">All styles have 4+ phrases available.</div>}
+            <div className="mt-3 flex gap-2 flex-wrap">
+              {styles.map((style) => (
+                <button key={style} onClick={() => runDiag(style)}
+                  className="px-2 py-1 text-xs bg-white border border-gray-300 rounded hover:bg-gray-50 text-gray-600">
+                  Diagnose {style}
+                </button>
+              ))}
+            </div>
           </div>
         )}
-        {!hasIssue && <div className="mt-1 text-gray-400 text-xs">All styles have 4+ phrases available.</div>}
-        <div className="mt-3 flex gap-2 flex-wrap">
-          {styles.map((style) => (
-            <button key={style} onClick={() => runDiag(style)}
-              className="px-2 py-1 text-xs bg-white border border-gray-300 rounded hover:bg-gray-50 text-gray-600">
-              Diagnose {style}
-            </button>
-          ))}
-        </div>
       </div>
 
       {diagStyle && (
