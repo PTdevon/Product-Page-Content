@@ -84,12 +84,12 @@ export async function POST(req: NextRequest) {
     // new text instead of the old one and find nothing.
     const oldFormatted = wctEntry.searchFormatted || currentLibraryFormatted;
 
-    // Always include currentLibraryFormatted in the search as well. This catches the case where
-    // searchFormatted is stale (e.g. a partial push updated the subtext on products but the
-    // library marker was never refreshed) — products will have the current subtext, not the one
-    // recorded in searchFormatted, so we need both to find everything.
+    // When text has changed, only search for the old formatted value — products already on
+    // the new text are up to date and must not be included (they'd show as "0 updated").
+    // When text hasn't changed, include all variants in case searchFormatted is stale from
+    // a partial push that didn't refresh the library marker.
     const searchFor = oldFormatted !== newFormatted
-      ? new Set([oldFormatted, currentLibraryFormatted].filter(Boolean))
+      ? new Set([oldFormatted])
       : new Set([oldFormatted, newFormatted, currentLibraryFormatted].filter(Boolean));
 
     while (true) {

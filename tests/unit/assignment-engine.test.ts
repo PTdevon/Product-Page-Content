@@ -31,6 +31,19 @@ describe("assignWhyChooseThis", () => {
     expect(result.bullet1).toBe("<strong>Bold claim</strong> backed by quality.");
   });
 
+  it("HTML-escapes special characters in text and subtext", () => {
+    const lib = [makeWCT({ text: "<b>Claim</b>", subtext: 'value="x" & more' })];
+    const result = assignWhyChooseThis(homeMinimalCtx, lib, 0);
+    expect(result.bullet1).toBe("<strong>&lt;b&gt;Claim&lt;/b&gt;</strong> value=&quot;x&quot; &amp; more");
+  });
+
+  it("HTML-escapes script injection attempts in text", () => {
+    const lib = [makeWCT({ text: '<script>alert(1)</script>', subtext: "safe" })];
+    const result = assignWhyChooseThis(homeMinimalCtx, lib, 0);
+    expect(result.bullet1).not.toContain("<script>");
+    expect(result.bullet1).toContain("&lt;script&gt;");
+  });
+
   it("returns empty string for a category with no matching entries", () => {
     const lib = [makeWCT({ category: "Stands Out" })]; // only 1 of 4 categories
     const result = assignWhyChooseThis(homeMinimalCtx, lib, 0);

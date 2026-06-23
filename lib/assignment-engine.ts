@@ -1,5 +1,8 @@
 import type { WhyChooseThisEntry, PerfectForEntry } from "./types";
 
+const escHtml = (s: string) =>
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
 export interface ProductContext {
   title: string;
   descriptionText: string;
@@ -68,7 +71,7 @@ export function assignWhyChooseThis(
       result.push("");
     } else {
       const chosen = candidates[Math.floor(rand() * candidates.length)];
-      result.push(`<strong>${chosen.text}</strong> ${chosen.subtext}`);
+      result.push(`<strong>${escHtml(chosen.text)}</strong> ${escHtml(chosen.subtext)}`);
     }
   }
 

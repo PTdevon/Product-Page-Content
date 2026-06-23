@@ -6,22 +6,33 @@ import { minifySvg } from "@/lib/icons";
 
 export const dynamic = "force-dynamic";
 
-// Server-side SVG sanitizer — no DOM/jsdom dependency needed.
 function serverSanitizeSvg(raw: string): string | null {
   if (!raw.includes("<svg")) return null;
   let s = raw;
-  // Strip script tags and content
+
+  // Strip script tags
   s = s.replace(/<script[\s\S]*?<\/script>/gi, "");
-  // Strip dangerous elements (self-closing or paired)
-  for (const tag of ["iframe", "object", "embed", "form", "input", "base", "meta", "link"]) {
+
+  // Strip dangerous elements (including foreignObject which can embed HTML, and animation elements that fire events)
+  const forbidden = ["iframe", "object", "embed", "form", "input", "base", "meta", "link", "foreignobject", "animate", "animatetransform", "animatemotion", "set", "discard"];
+  for (const tag of forbidden) {
     s = s.replace(new RegExp(`<${tag}[\\s\\S]*?<\\/${tag}>`, "gi"), "");
     s = s.replace(new RegExp(`<${tag}[^>]*/?>`, "gi"), "");
   }
-  // Strip on* event handlers
-  s = s.replace(/\s+on\w+\s*=\s*"[^"]*"/gi, "");
-  s = s.replace(/\s+on\w+\s*=\s*'[^']*'/gi, "");
-  // Strip javascript: URLs
-  s = s.replace(/(href|src|xlink:href)\s*=\s*["']\s*javascript:[^"']*["']/gi, "");
+
+  // Strip on* event handlers — quoted, unquoted, or with whitespace variants
+  s = s.replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]*)/gi, "");
+
+  // Strip javascript: and data: URLs from any attribute
+  s = s.replace(/(?:href|src|action|xlink:href)\s*=\s*["']\s*(?:javascript|data):[^"']*["']/gi, "");
+  s = s.replace(/(?:href|src|action|xlink:href)\s*=\s*(?:javascript|data):[^\s>]*/gi, "");
+
+  // Strip <use> pointing to external resources (allow only #fragment references)
+  s = s.replace(/<use[^>]*(?:href|xlink:href)\s*=\s*["'](?!#)[^"']*["'][^>]*\/?>/gi, "");
+
+  // Strip style attributes containing CSS expression() or behavior: (IE attack vectors)
+  s = s.replace(/\s+style\s*=\s*["'][^"']*(?:expression\s*\(|behavior\s*:)[^"']*["']/gi, "");
+
   if (!s.includes("<svg")) return null;
   return s;
 }

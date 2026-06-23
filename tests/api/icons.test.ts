@@ -105,6 +105,91 @@ describe("POST /api/icons", () => {
     const res = await POST(req);
     expect(res.status).toBe(400);
   });
+
+  it("rejects SVG containing only a <script> tag (sanitiser strips it, leaving no <svg)", async () => {
+    const req = new NextRequest("http://localhost/api/icons", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "bad", svg: "<script>alert(1)</script>" }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+  });
+
+  it("strips on* event handlers before passing SVG to createIcon", async () => {
+    const malicious = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" onload="alert(1)"><circle cx="12" cy="12" r="4"/></svg>`;
+    const req = new NextRequest("http://localhost/api/icons", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "test", svg: malicious }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(200);
+    const passedSvg: string = vi.mocked(createIcon).mock.calls.at(-1)![1];
+    expect(passedSvg).not.toMatch(/onload/i);
+  });
+
+  it("strips unquoted on* event handlers", async () => {
+    const malicious = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" onload=alert(1)><circle cx="12" cy="12" r="4"/></svg>`;
+    const req = new NextRequest("http://localhost/api/icons", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "test", svg: malicious }),
+    });
+    await POST(req);
+    const passedSvg: string = vi.mocked(createIcon).mock.calls.at(-1)![1];
+    expect(passedSvg).not.toMatch(/onload/i);
+  });
+
+  it("strips <foreignObject> elements", async () => {
+    const malicious = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><foreignObject><script>alert(1)</script></foreignObject><circle cx="12" cy="12" r="4"/></svg>`;
+    const req = new NextRequest("http://localhost/api/icons", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "test", svg: malicious }),
+    });
+    await POST(req);
+    const passedSvg: string = vi.mocked(createIcon).mock.calls.at(-1)![1];
+    expect(passedSvg).not.toMatch(/foreignObject/i);
+    expect(passedSvg).not.toMatch(/<script/i);
+  });
+
+  it("strips javascript: href URLs", async () => {
+    const malicious = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><a href="javascript:alert(1)"><circle cx="12" cy="12" r="4"/></a></svg>`;
+    const req = new NextRequest("http://localhost/api/icons", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "test", svg: malicious }),
+    });
+    await POST(req);
+    const passedSvg: string = vi.mocked(createIcon).mock.calls.at(-1)![1];
+    expect(passedSvg).not.toMatch(/javascript:/i);
+  });
+
+  it("strips <use> elements pointing to external resources", async () => {
+    const malicious = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="https://evil.com/xss.svg#payload"/><circle cx="12" cy="12" r="4"/></svg>`;
+    const req = new NextRequest("http://localhost/api/icons", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "test", svg: malicious }),
+    });
+    await POST(req);
+    const passedSvg: string = vi.mocked(createIcon).mock.calls.at(-1)![1];
+    expect(passedSvg).not.toMatch(/evil\.com/);
+  });
+
+  it("preserves <use> with internal fragment references", async () => {
+    const safe = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#my-shape"/><circle id="my-shape" cx="12" cy="12" r="4"/></svg>`;
+    const req = new NextRequest("http://localhost/api/icons", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "test", svg: safe }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(200);
+    const passedSvg: string = vi.mocked(createIcon).mock.calls.at(-1)![1];
+    expect(passedSvg).toContain("#my-shape");
+  });
 });
 
 describe("DELETE /api/icons", () => {

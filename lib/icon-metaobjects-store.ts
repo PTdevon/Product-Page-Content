@@ -103,25 +103,30 @@ export async function getIcon(name: string): Promise<IconMetaobject | null> {
 
 export async function createIcon(name: string, svg: string): Promise<IconMetaobject> {
   const cleanSvg = minifySvg(svg);
-  const result = await shopifyGraphQL<{
+
+  type CreateResult = {
     metaobjectCreate: {
       metaobject: { id: string; handle: string } | null;
       userErrors: Array<{ field: string; message: string }>;
     };
-  }>(CREATE_ICON_MUTATION, {
-    metaobject: {
-      type: "pdp_icon",
-      handle: name,
-      fields: [{ key: "svg", value: cleanSvg }],
-    },
-  });
+  };
 
-  if (result.metaobjectCreate.userErrors.length > 0) {
-    throw new Error(result.metaobjectCreate.userErrors[0].message);
+  const inputs = [
+    { type: "pdp_icon", handle: name, fields: [{ key: "svg", value: cleanSvg }], capabilities: { publishable: { status: "ACTIVE" } } },
+    { type: "pdp_icon", handle: name, fields: [{ key: "svg", value: cleanSvg }] },
+  ];
+
+  for (const metaobject of inputs) {
+    const result = await shopifyGraphQL<CreateResult>(CREATE_ICON_MUTATION, { metaobject });
+    const { userErrors, metaobject: obj } = result.metaobjectCreate;
+
+    if (userErrors.some(e => e.message.toLowerCase().includes("capabilit"))) continue;
+    if (userErrors.length > 0) throw new Error(userErrors[0].message);
+
+    return { id: obj!.id, handle: obj!.handle, svg: cleanSvg };
   }
 
-  const obj = result.metaobjectCreate.metaobject!;
-  return { id: obj.id, handle: obj.handle, svg: cleanSvg };
+  throw new Error("Failed to create icon: publishable capability not available");
 }
 
 export async function deleteIcon(id: string): Promise<void> {
@@ -166,6 +171,7 @@ async function _doEnsureDefinitionAndSeed(): Promise<void> {
       fieldDefinitions: [
         { name: "SVG", key: "svg", type: "multi_line_text_field" },
       ],
+      capabilities: { publishable: { enabled: true } },
     },
   });
 

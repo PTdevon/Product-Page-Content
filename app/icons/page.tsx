@@ -341,9 +341,10 @@ export default function IconsPage() {
 
             {svgIsValid && (
               <div className="flex items-center gap-3">
-                <span
-                  className="w-8 h-8 flex items-center justify-center border border-gray-200 rounded-md [&>svg]:w-6 [&>svg]:h-6"
-                  dangerouslySetInnerHTML={{ __html: pasteModal.rawSvg }}
+                <img
+                  src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(pasteModal.rawSvg)}`}
+                  className="w-8 h-8 border border-gray-200 rounded-md p-1"
+                  alt="SVG preview"
                 />
                 <span className="text-xs text-gray-400">Preview</span>
               </div>

@@ -1584,11 +1584,11 @@ function PfCoverageBanner({ phrases, productType, taxonomy, loading }: { phrases
 
 function WctTable({ entries, loading, onEdit }: { entries: WCTRow[]; loading: boolean; onEdit: (e: WCTRow) => void }) {
   return (
-    <table className="w-full text-sm">
+    <table className="w-auto min-w-full text-sm">
       <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
         <tr>
-          <th className="px-4 py-3 text-left font-medium text-gray-600 text-xs uppercase tracking-wide w-48">Type</th>
-          <th className="px-4 py-3 text-left font-medium text-gray-600 text-xs uppercase tracking-wide w-48">Style</th>
+          <th className="px-4 py-3 text-left font-medium text-gray-600 text-xs uppercase tracking-wide w-20">Type</th>
+          <th className="px-4 py-3 text-left font-medium text-gray-600 text-xs uppercase tracking-wide w-24">Style</th>
           <th className="px-4 py-3 text-left font-medium text-gray-600 text-xs uppercase tracking-wide w-40">Category</th>
           <th className="px-4 py-3 text-left font-medium text-gray-600 text-xs uppercase tracking-wide">Text</th>
           <th className="px-4 py-3 text-left font-medium text-gray-600 text-xs uppercase tracking-wide">Subtext</th>
@@ -1600,11 +1600,11 @@ function WctTable({ entries, loading, onEdit }: { entries: WCTRow[]; loading: bo
         {!loading && entries.length === 0 && <tr><td colSpan={6} className="px-4 py-10 text-center text-gray-400">No entries found</td></tr>}
         {entries.map((e) => (
           <tr key={e.id} onClick={() => onEdit(e)} className="group cursor-pointer hover:bg-gray-50">
-            <td className="px-4 py-3 text-gray-500 w-48 whitespace-nowrap">{e.productType}</td>
-            <td className="px-4 py-3 text-gray-500 w-48 whitespace-nowrap">{e.productStyle}</td>
+            <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{e.productType}</td>
+            <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{e.productStyle}</td>
             <td className="px-4 py-3 w-40"><span className="px-2 py-0.5 rounded-full text-sm bg-blue-50 text-blue-700 whitespace-nowrap">{e.category}</span></td>
-            <td className="px-4 py-3 font-medium text-gray-900">{e.text}</td>
-            <td className="px-4 py-3 text-gray-500">{e.subtext}</td>
+            <td className="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">{e.text}</td>
+            <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{e.subtext}</td>
             <td className="px-4 py-3 text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity">
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
