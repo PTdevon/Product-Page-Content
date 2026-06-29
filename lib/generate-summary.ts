@@ -3,6 +3,8 @@ import { isCreditsExhaustedError } from "./anthropic-errors";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6";
+
 const SYSTEM_PROMPT = `You write product summary copy for Penelope Tom (PT), a UK gift retailer specialising in thoughtful, design-led gifts.
 
 The product summary is a single sentence displayed directly below the product title. It is the product's elevator pitch — the moment that makes a browser stop and a buyer decide this is the one.
@@ -81,7 +83,7 @@ Write exactly ${numOptions} distinct product summary option${numOptions === 1 ? 
 
   try {
     const response = await client.messages.create({
-      model: "claude-sonnet-4-6",
+      model: MODEL,
       max_tokens: 400,
       temperature: 0.8,
       system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
