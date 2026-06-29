@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { isCreditsExhaustedError } from "./anthropic-errors";
+import { isCreditsExhaustedError, isModelDeprecatedError } from "./anthropic-errors";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -122,6 +122,11 @@ Write exactly ${numOptions} distinct product summary option${numOptions === 1 ? 
           message: "Your Anthropic account has run out of credits.",
           billingUrl: "https://console.anthropic.com",
         },
+      };
+    }
+    if (isModelDeprecatedError(err)) {
+      return {
+        error: { type: "unknown", message: `The AI model "${MODEL}" is no longer available. Update the ANTHROPIC_MODEL environment variable in Vercel to a current model ID.` },
       };
     }
     if (status === 401) {

@@ -1,3 +1,10 @@
+// Anthropic returns a 404 when a model ID is not found — usually because the
+// model has been deprecated. The error message contains the model name.
+export function isModelDeprecatedError(err: unknown): boolean {
+  const e = err as { status?: number; message?: string };
+  return e?.status === 404 && /model/i.test(e?.message ?? "");
+}
+
 // Anthropic returns credit exhaustion as a 400 invalid_request_error with a
 // "credit balance is too low" message, not a dedicated status/type — so this
 // checks the message text rather than relying on a stable error code.
